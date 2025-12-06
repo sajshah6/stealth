@@ -1,0 +1,2 @@
+# stealth
+Fun side-project

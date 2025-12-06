@@ -1,16 +1,14 @@
-import { Button } from "@/components/ui/button";
+import { AppShell } from "@/components/layout";
+import { NewProjectView } from "@/components/new-project";
 
-export default function Home() {
+/**
+ * Home page - New Project
+ * Upload files to start a new research workflow
+ */
+export default function HomePage() {
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-4 p-24">
-      <h1 className="text-4xl font-bold">Welcome to Stealth</h1>
-      <p className="text-lg text-muted-foreground">
-        Your fun side-project starts here.
-      </p>
-      <div className="flex gap-2">
-        <Button>Get Started</Button>
-        <Button variant="outline">Learn More</Button>
-      </div>
-    </main>
+    <AppShell>
+      <NewProjectView />
+    </AppShell>
   );
 }

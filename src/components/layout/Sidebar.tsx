@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Plus, FolderKanban, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { UserMenu } from "./UserMenu";
 
 /** Main navigation tabs */
 const navItems = [
@@ -122,20 +122,8 @@ export function Sidebar() {
         })}
       </ScrollArea>
 
-      {/* User Profile */}
-      <div className="p-3 border-t border-gray-200">
-        <button className="w-full flex items-center gap-3 px-2 py-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-teal-600 text-white text-xs">
-              SA
-            </AvatarFallback>
-          </Avatar>
-          <div className="text-left">
-            <div className="text-sm font-medium">Sajan Shah</div>
-            <div className="text-xs text-gray-500">Pro</div>
-          </div>
-        </button>
-      </div>
+      {/* User Profile / Sign In */}
+      <UserMenu />
     </aside>
   );
 }

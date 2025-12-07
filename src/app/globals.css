@@ -117,4 +117,9 @@
   body {
     @apply bg-background text-foreground;
   }
+  button,
+  [role="button"],
+  a {
+    cursor: pointer;
+  }
 }

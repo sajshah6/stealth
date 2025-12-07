@@ -1,14 +1,195 @@
 "use client";
 
-import { Upload, FileText, ArrowRight } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { FileUploader } from "./FileUploader";
+import { useAuth } from "@/providers";
+import { createClient } from "@/lib/supabase/client";
+import type { UploadedFile } from "@/lib/types";
 
 /**
  * New Project View
- * Upload files to start a new research workflow
+ * Upload files and start a new research workflow
  */
 export function NewProjectView() {
+  const router = useRouter();
+  const { user, signInWithGoogle } = useAuth();
+
+  const [projectName, setProjectName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [files, setFiles] = useState<UploadedFile[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canSubmit = projectName.trim() !== "" && files.length > 0 && !isSubmitting;
+
+  const handleStartResearch = async () => {
+    // Check if user is signed in
+    if (!user) {
+      signInWithGoogle();
+      return;
+    }
+
+    if (!canSubmit) return;
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      const supabase = createClient();
+
+      // 1. Create the project
+      const { data: project, error: projectError } = await supabase
+        .from("projects")
+        .insert({
+          user_id: user.id,
+          title: projectName.trim(),
+          company_name: companyName.trim() || null,
+          status: "in_progress",
+          current_step_number: 1,
+        })
+        .select()
+        .single();
+
+      if (projectError) {
+        throw new Error("Failed to create project");
+      }
+
+      // 2. Upload files to Storage and create file records
+      const uploadedFileIds: string[] = [];
+
+      for (const uploadFile of files) {
+        // Update file status to uploading
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === uploadFile.id ? { ...f, status: "uploading" as const } : f
+          )
+        );
+
+        // Create storage path: user_id/project_id/timestamp_filename
+        const storagePath = `${user.id}/${project.id}/${Date.now()}_${uploadFile.name}`;
+
+        // Upload to Supabase Storage
+        const { error: uploadError } = await supabase.storage
+          .from("project-files")
+          .upload(storagePath, uploadFile.file);
+
+        if (uploadError) {
+          console.error("Upload error:", uploadError);
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === uploadFile.id
+                ? { ...f, status: "error" as const, error: "Upload failed" }
+                : f
+            )
+          );
+          continue;
+        }
+
+        // Create file record in database
+        const fileExtension = uploadFile.name.split(".").pop()?.toLowerCase() || "";
+
+        const { data: fileRecord, error: dbError } = await supabase
+          .from("files")
+          .insert({
+            user_id: user.id,
+            project_id: project.id,
+            name: uploadFile.name,
+            file_type: fileExtension,
+            mime_type: uploadFile.type,
+            size_bytes: uploadFile.size,
+            category: "source_document",
+            storage_bucket: "project-files",
+            storage_path: storagePath,
+          })
+          .select()
+          .single();
+
+        if (dbError) {
+          console.error("DB error:", dbError);
+          // Try to clean up uploaded file
+          await supabase.storage.from("project-files").remove([storagePath]);
+          setFiles((prev) =>
+            prev.map((f) =>
+              f.id === uploadFile.id
+                ? { ...f, status: "error" as const, error: "Database error" }
+                : f
+            )
+          );
+          continue;
+        }
+
+        uploadedFileIds.push(fileRecord.id);
+        setFiles((prev) =>
+          prev.map((f) =>
+            f.id === uploadFile.id ? { ...f, status: "success" as const, progress: 100 } : f
+          )
+        );
+      }
+
+      // 3. Create the first project step (document_upload - completed)
+      const { data: firstStepDef } = await supabase
+        .from("workflow_step_definitions")
+        .select("id, step_key")
+        .eq("is_active", true)
+        .order("step_order")
+        .limit(1)
+        .single();
+
+      if (firstStepDef) {
+        await supabase.from("project_steps").insert({
+          project_id: project.id,
+          step_definition_id: firstStepDef.id,
+          step_key: firstStepDef.step_key,
+          step_number: 1,
+          iteration: 1,
+          status: "completed",
+          output: {
+            files_uploaded: uploadedFileIds.length,
+            file_ids: uploadedFileIds,
+          },
+          started_at: new Date().toISOString(),
+          completed_at: new Date().toISOString(),
+        });
+      }
+
+      // 4. Create the second step (initial_analysis - pending)
+      const { data: secondStepDef } = await supabase
+        .from("workflow_step_definitions")
+        .select("id, step_key")
+        .eq("is_active", true)
+        .eq("step_order", 2)
+        .single();
+
+      if (secondStepDef) {
+        await supabase.from("project_steps").insert({
+          project_id: project.id,
+          step_definition_id: secondStepDef.id,
+          step_key: secondStepDef.step_key,
+          step_number: 2,
+          iteration: 1,
+          status: "pending",
+        });
+
+        // Update project to step 2
+        await supabase
+          .from("projects")
+          .update({ current_step_number: 2 })
+          .eq("id", project.id);
+      }
+
+      // 5. Redirect to project detail page
+      router.push(`/projects/${project.id}`);
+    } catch (err) {
+      console.error("Error:", err);
+      setError(err instanceof Error ? err.message : "Something went wrong");
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-8">
       <div className="max-w-xl w-full">
@@ -25,76 +206,75 @@ export function NewProjectView() {
         {/* Project Name Input */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Project Name
+            Project Name <span className="text-red-500">*</span>
           </label>
           <Input
             type="text"
-            placeholder="e.g., Biotech Company XYZ Analysis"
+            placeholder="e.g., Moderna Q3 2024 Analysis"
             className="h-12"
+            value={projectName}
+            onChange={(e) => setProjectName(e.target.value)}
+            disabled={isSubmitting}
           />
         </div>
 
-        {/* File Upload Area */}
+        {/* Company Name Input */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
-            Upload Documents
+            Company Name <span className="text-gray-400">(optional)</span>
           </label>
-          <div className="border-2 border-dashed border-gray-300 rounded-xl p-8 text-center hover:border-gray-400 transition-colors cursor-pointer">
-            <div className="flex flex-col items-center">
-              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                <Upload className="w-6 h-6 text-gray-500" />
-              </div>
-              <p className="text-sm font-medium text-gray-700 mb-1">
-                Drag and drop files here
-              </p>
-              <p className="text-xs text-gray-500 mb-4">
-                or click to browse
-              </p>
-              <p className="text-xs text-gray-400">
-                Supports PDF, DOCX, XLSX, TXT (max 50MB)
-              </p>
-            </div>
-          </div>
+          <Input
+            type="text"
+            placeholder="e.g., Moderna Inc."
+            className="h-12"
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+            disabled={isSubmitting}
+          />
         </div>
 
-        {/* Uploaded Files Preview */}
-        <div className="mb-8">
-          <div className="text-sm font-medium text-gray-700 mb-2">
-            Uploaded Files
-          </div>
-          <div className="space-y-2">
-            {/* Example uploaded file - will be dynamic */}
-            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-              <FileText className="w-5 h-5 text-gray-400" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-700 truncate">
-                  Company_Prospectus.pdf
-                </p>
-                <p className="text-xs text-gray-500">2.4 MB</p>
-              </div>
-              <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50">
-                Remove
-              </Button>
-            </div>
-            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
-              <FileText className="w-5 h-5 text-gray-400" />
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-700 truncate">
-                  Financial_Statements_Q3.xlsx
-                </p>
-                <p className="text-xs text-gray-500">890 KB</p>
-              </div>
-              <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-600 hover:bg-red-50">
-                Remove
-              </Button>
-            </div>
-          </div>
+        {/* File Upload */}
+        <div className="mb-6">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            Upload Documents <span className="text-red-500">*</span>
+          </label>
+          <FileUploader
+            files={files}
+            onFilesChange={setFiles}
+            disabled={isSubmitting}
+          />
         </div>
+
+        {/* Error Message */}
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+            {error}
+          </div>
+        )}
 
         {/* Start Button */}
-        <Button className="w-full h-12 text-base" size="lg">
-          Start Research Workflow
-          <ArrowRight className="w-5 h-5 ml-2" />
+        <Button
+          className="w-full h-12 text-base"
+          size="lg"
+          onClick={handleStartResearch}
+          disabled={!canSubmit && user !== null}
+        >
+          {isSubmitting ? (
+            <>
+              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              Creating Project...
+            </>
+          ) : !user ? (
+            <>
+              Sign in to Start
+              <ArrowRight className="w-5 h-5 ml-2" />
+            </>
+          ) : (
+            <>
+              Start Research Workflow
+              <ArrowRight className="w-5 h-5 ml-2" />
+            </>
+          )}
         </Button>
 
         {/* Workflow Preview */}
@@ -104,23 +284,33 @@ export function NewProjectView() {
           </p>
           <div className="space-y-2 text-sm text-gray-600">
             <div className="flex items-center gap-2">
-              <span className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">1</span>
+              <span className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">
+                1
+              </span>
               Document Ingestion & Key Info Extraction
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">2</span>
+              <span className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">
+                2
+              </span>
               Open Questions Generation
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">3</span>
+              <span className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">
+                3
+              </span>
               Deep Research & Analysis
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">4</span>
+              <span className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">
+                4
+              </span>
               White Paper Draft & Expert Review
             </div>
             <div className="flex items-center gap-2">
-              <span className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">5</span>
+              <span className="w-5 h-5 bg-gray-200 rounded-full flex items-center justify-center text-xs font-medium">
+                5
+              </span>
               Final White Paper & Slide Deck
             </div>
           </div>
@@ -129,4 +319,3 @@ export function NewProjectView() {
     </div>
   );
 }
-

@@ -1,265 +1,433 @@
 "use client";
 
-import { ArrowLeft, Download, FileText } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Download, FileText, Loader2, Building2, Calendar, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { WorkflowStep, type WorkflowStepData } from "./WorkflowStep";
+import { WorkflowStep, type WorkflowStepData, type StepStatus } from "./WorkflowStep";
 import { InputPrompt, type InputPromptData } from "./InputPrompt";
 import { cn } from "@/lib/utils";
+import { createClient } from "@/lib/supabase/client";
+import { downloadFile } from "@/lib/utils/download";
 
 interface ProjectDetailViewProps {
   projectId: string;
 }
 
-/** TODO: Replace with actual data from backend */
-const mockProject = {
-  id: "1",
-  title: "Biotech Company XYZ Analysis",
-  status: "in_progress" as const,
-  createdAt: "Dec 6, 2024 at 2:30 PM",
-  files: [
-    { name: "Company_Prospectus.pdf", size: "2.4 MB" },
-    { name: "Financial_Statements_Q3.xlsx", size: "890 KB" },
-  ],
-};
+interface Project {
+  id: string;
+  title: string;
+  company_name: string | null;
+  status: string;
+  current_step_number: number;
+  created_at: string;
+}
 
-const mockSteps: WorkflowStepData[] = [
-  {
-    id: "1",
-    title: "Document Ingestion",
-    status: "completed",
-    description: "Successfully processed 2 documents (47 pages total)",
-    timestamp: "2:30 PM",
-    agentThoughts: [
-      "Extracted text from Company_Prospectus.pdf (45 pages)",
-      "Parsed financial data from Financial_Statements_Q3.xlsx",
-      "Identified document types: Prospectus, Financial Statement",
-    ],
-  },
-  {
-    id: "2",
-    title: "Key Information Extraction",
-    status: "completed",
-    description: "Extracted 12 key metrics and 3 risk factors",
-    timestamp: "2:32 PM",
-    agentThoughts: [
-      "Company focuses on oncology therapeutics",
-      "Currently in Phase 2 clinical trials for lead compound",
-      "Strong IP portfolio with 12 patents",
-      "Cash runway: 18 months at current burn rate",
-    ],
-  },
-  {
-    id: "3",
-    title: "Open Questions Generation",
-    status: "completed",
-    description: "Generated 8 research questions for deep analysis",
-    timestamp: "2:34 PM",
-    agentThoughts: [
-      "Q1: What is the competitive landscape for their lead compound?",
-      "Q2: What are the regulatory hurdles they face?",
-      "Q3: How does their cash runway compare to trial timeline?",
-      "Q4: What are the key milestones for the next 12 months?",
-    ],
-  },
-  {
-    id: "4",
-    title: "Deep Research & Analysis",
-    status: "in_progress",
-    description: "Conducting comprehensive research using multiple sources",
-    agentThoughts: [
-      "Analyzing competitive landscape via Gemini...",
-      "Cross-referencing clinical trial data from public databases...",
-      "Researching regulatory pathway for similar drugs...",
-    ],
-  },
-  {
-    id: "5",
-    title: "White Paper Draft",
-    status: "pending",
-  },
-  {
-    id: "6",
-    title: "Expert Panel Review",
-    status: "pending",
-  },
-  {
-    id: "7",
-    title: "Feedback & Refinement",
-    status: "pending",
-  },
-  {
-    id: "8",
-    title: "Final White Paper & Slide Deck",
-    status: "pending",
-  },
-];
+interface ProjectStepFromDB {
+  id: string;
+  step_key: string;
+  step_number: number;
+  status: string;
+  output: Record<string, unknown> | null;
+  input_request: Record<string, unknown> | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
 
-/** Mock input prompt for demo - shown when status is needs_input */
-const mockInputPrompt: InputPromptData = {
-  question: "Which valuation methodology should I prioritize for this analysis?",
-  type: "single_select",
-  options: [
-    {
-      id: "dcf",
-      label: "DCF Analysis",
-      description: "Discounted cash flow based on projected revenues",
-    },
-    {
-      id: "comps",
-      label: "Comparable Companies",
-      description: "Valuation based on similar public companies",
-    },
-    {
-      id: "both",
-      label: "Both Methods",
-      description: "Use both approaches for a comprehensive view",
-    },
-  ],
-};
+interface WorkflowStepDef {
+  step_key: string;
+  step_name: string;
+  step_order: number;
+}
+
+interface FileFromDB {
+  id: string;
+  name: string;
+  size_bytes: number;
+  category: string;
+  storage_path: string;
+  storage_bucket: string;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatDate(dateString: string): string {
+  const date = new Date(dateString);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function formatTime(dateString: string | null): string | undefined {
+  if (!dateString) return undefined;
+  const date = new Date(dateString);
+  return date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
-  const completedSteps = mockSteps.filter((s) => s.status === "completed").length;
-  const progress = (completedSteps / mockSteps.length) * 100;
-  const needsInput = mockSteps.some((s) => s.status === "needs_input");
-  const isCompleted = mockSteps.every((s) => s.status === "completed");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [project, setProject] = useState<Project | null>(null);
+  const [steps, setSteps] = useState<WorkflowStepData[]>([]);
+  const [sourceFiles, setSourceFiles] = useState<FileFromDB[]>([]);
+  const [generatedFiles, setGeneratedFiles] = useState<FileFromDB[]>([]);
+  const [totalSteps, setTotalSteps] = useState(0);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
-  // For demo: show input prompt for project 2
-  const showInputPrompt = projectId === "2";
+  useEffect(() => {
+    async function fetchData() {
+      const supabase = createClient();
+
+      try {
+        // 1. Fetch project details
+        const { data: projectData, error: projectError } = await supabase
+          .from("projects")
+          .select("*")
+          .eq("id", projectId)
+          .single();
+
+        if (projectError) throw projectError;
+        setProject(projectData);
+
+        // 2. Fetch workflow step definitions (to get names and total count)
+        const { data: stepDefs, error: stepDefsError } = await supabase
+          .from("workflow_step_definitions")
+          .select("step_key, step_name, step_order")
+          .eq("is_active", true)
+          .order("step_order");
+
+        if (stepDefsError) throw stepDefsError;
+        setTotalSteps(stepDefs?.length || 0);
+
+        // Create a map of step_key to step_name
+        const stepNameMap: Record<string, string> = {};
+        stepDefs?.forEach((def: WorkflowStepDef) => {
+          stepNameMap[def.step_key] = def.step_name;
+        });
+
+        // 3. Fetch project steps
+        const { data: projectSteps, error: stepsError } = await supabase
+          .from("project_steps")
+          .select("*")
+          .eq("project_id", projectId)
+          .order("step_number");
+
+        if (stepsError) throw stepsError;
+
+        // 4. Build the steps array
+        const stepsData: WorkflowStepData[] = stepDefs?.map((def: WorkflowStepDef) => {
+          const projectStep = projectSteps?.find(
+            (ps: ProjectStepFromDB) => ps.step_key === def.step_key
+          );
+
+          if (projectStep) {
+            const output = projectStep.output as Record<string, unknown> | null;
+            return {
+              id: projectStep.id,
+              title: stepNameMap[projectStep.step_key] || projectStep.step_key,
+              status: projectStep.status as StepStatus,
+              description: output?.result as string | undefined,
+              timestamp: formatTime(projectStep.completed_at || projectStep.started_at),
+              agentThoughts: output?.thoughts as string[] | undefined,
+            };
+          } else {
+            return {
+              id: def.step_key,
+              title: def.step_name,
+              status: "pending" as StepStatus,
+            };
+          }
+        }) || [];
+
+        setSteps(stepsData);
+
+        // 5. Fetch files with storage info
+        const { data: files, error: filesError } = await supabase
+          .from("files")
+          .select("id, name, size_bytes, category, storage_path, storage_bucket")
+          .eq("project_id", projectId);
+
+        if (filesError) throw filesError;
+
+        const source = files?.filter((f: FileFromDB) => f.category === "source_document") || [];
+        const generated = files?.filter((f: FileFromDB) =>
+          f.category === "final_whitepaper" || f.category === "slide_deck" || f.category === "draft"
+        ) || [];
+
+        setSourceFiles(source);
+        setGeneratedFiles(generated);
+
+      } catch (err) {
+        console.error("Error fetching project:", err);
+        setError("Failed to load project");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchData();
+  }, [projectId]);
+
+  const handleDownload = async (file: FileFromDB) => {
+    if (downloadingId) return;
+    
+    setDownloadingId(file.id);
+    try {
+      await downloadFile(
+        file.storage_path,
+        file.name,
+        file.storage_bucket || "project-files"
+      );
+    } catch (err) {
+      console.error("Download failed:", err);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+      </div>
+    );
+  }
+
+  if (error || !project) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-500 mb-4">{error || "Project not found"}</p>
+          <Link href="/projects">
+            <Button variant="outline">Back to Projects</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const completedSteps = steps.filter((s) => s.status === "completed").length;
+  const progress = totalSteps > 0 ? (completedSteps / totalSteps) * 100 : 0;
+  const needsInput = steps.some((s) => s.status === "needs_input");
+  const isCompleted = project.status === "completed";
+  const currentStepName = steps.find((s) => s.status === "in_progress" || s.status === "pending")?.title || "Complete";
+
+  // Check if any step needs input
+  const inputStep = steps.find((s) => s.status === "needs_input");
+  const inputPrompt: InputPromptData | null = inputStep?.inputRequest
+    ? {
+        question: (inputStep.inputRequest as { question?: string }).question || "",
+        type: ((inputStep.inputRequest as { type?: string }).type as "single_select" | "multi_select" | "text") || "single_select",
+        options: (inputStep.inputRequest as { options?: { id: string; label: string; description?: string }[] }).options,
+      }
+    : null;
 
   return (
-    <div className="flex-1 overflow-auto">
-      {/* Header */}
-      <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 z-10">
-        <div className="max-w-4xl mx-auto">
-          <Link
-            href="/projects"
-            className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-2"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to Projects
-          </Link>
-          <div className="flex items-start justify-between">
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">
-                {mockProject.title}
-              </h1>
-              <p className="text-sm text-gray-500 mt-1">
-                Started {mockProject.createdAt}
-              </p>
+    <div className="flex-1 overflow-auto bg-gray-50/50">
+      <div className="max-w-5xl mx-auto p-6 space-y-6">
+        
+        {/* Project Header Card */}
+        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl font-semibold text-gray-900 truncate">
+                  {project.title}
+                </h1>
+                <div className="flex items-center gap-4 mt-2 text-sm text-gray-500">
+                  {project.company_name && (
+                    <span className="flex items-center gap-1.5">
+                      <Building2 className="w-4 h-4" />
+                      {project.company_name}
+                    </span>
+                  )}
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4" />
+                    {formatDate(project.created_at)}
+                  </span>
+                </div>
+              </div>
+              {isCompleted && generatedFiles.length > 0 && (
+                <Button onClick={() => generatedFiles[0] && handleDownload(generatedFiles[0])}>
+                  <Download className="w-4 h-4 mr-2" />
+                  Download
+                </Button>
+              )}
             </div>
-            {isCompleted && (
-              <Button>
-                <Download className="w-4 h-4 mr-2" />
-                Download White Paper
-              </Button>
-            )}
-          </div>
 
-          {/* Progress Bar */}
-          <div className="mt-4">
-            <div className="flex items-center justify-between text-sm mb-2">
-              <span className="text-gray-600">
-                Step {completedSteps} of {mockSteps.length}
-              </span>
-              <span
-                className={cn(
-                  "font-medium",
-                  isCompleted ? "text-green-600" : "text-blue-600"
-                )}
-              >
-                {Math.round(progress)}% Complete
-              </span>
-            </div>
-            <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-              <div
-                className={cn(
-                  "h-full rounded-full transition-all",
-                  isCompleted ? "bg-green-500" : "bg-blue-500"
-                )}
-                style={{ width: `${progress}%` }}
-              />
+            {/* Progress Section */}
+            <div className="mt-6 pt-6 border-t border-gray-100">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <span className="text-sm font-medium text-gray-900">
+                    {isCompleted ? "Completed" : currentStepName}
+                  </span>
+                  <span className="text-sm text-gray-400 ml-2">
+                    Step {completedSteps + (isCompleted ? 0 : 1)} of {totalSteps}
+                  </span>
+                </div>
+                <span className={cn(
+                  "text-sm font-semibold",
+                  isCompleted ? "text-green-600" : needsInput ? "text-amber-600" : "text-blue-600"
+                )}>
+                  {Math.round(progress)}%
+                </span>
+              </div>
+              <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    "h-full rounded-full transition-all duration-500",
+                    isCompleted ? "bg-green-500" : needsInput ? "bg-amber-500" : "bg-blue-500"
+                  )}
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Content */}
-      <div className="px-6 py-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Workflow Timeline */}
-            <div className="lg:col-span-2">
-              <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider mb-4">
-                Workflow Progress
-              </h2>
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Workflow Timeline */}
+          <div className="lg:col-span-2 space-y-4">
+            
+            {/* Input Prompt (if needed) */}
+            {needsInput && inputPrompt && (
+              <InputPrompt prompt={inputPrompt} />
+            )}
 
-              {/* Input Prompt (if needed) */}
-              {showInputPrompt && (
-                <div className="mb-6">
-                  <InputPrompt prompt={mockInputPrompt} />
-                </div>
-              )}
-
-              {/* Steps */}
-              <div className="bg-white rounded-xl border border-gray-200 p-6">
-                {mockSteps.map((step, index) => (
-                  <WorkflowStep
-                    key={step.id}
-                    step={step}
-                    stepNumber={index + 1}
-                    isLast={index === mockSteps.length - 1}
-                  />
-                ))}
+            {/* Steps Card */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
+              <div className="px-6 py-4 border-b border-gray-100">
+                <h2 className="font-semibold text-gray-900">Workflow Progress</h2>
               </div>
-            </div>
-
-            {/* Sidebar Info */}
-            <div className="space-y-6">
-              {/* Source Files */}
-              <div className="bg-white rounded-xl border border-gray-200 p-4">
-                <h3 className="text-sm font-medium text-gray-900 mb-3">
-                  Source Files
-                </h3>
-                <div className="space-y-2">
-                  {mockProject.files.map((file, i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-2 text-sm text-gray-600"
-                    >
-                      <FileText className="w-4 h-4 text-gray-400" />
-                      <span className="truncate">{file.name}</span>
-                      <span className="text-gray-400 text-xs">{file.size}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Generated Files (when complete) */}
-              {isCompleted && (
-                <div className="bg-white rounded-xl border border-gray-200 p-4">
-                  <h3 className="text-sm font-medium text-gray-900 mb-3">
-                    Generated Files
-                  </h3>
-                  <div className="space-y-2">
-                    <button className="w-full flex items-center gap-2 p-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
-                      <FileText className="w-4 h-4 text-green-500" />
-                      <span className="truncate">White_Paper.pdf</span>
-                      <Download className="w-4 h-4 text-gray-400 ml-auto" />
-                    </button>
-                    <button className="w-full flex items-center gap-2 p-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors">
-                      <FileText className="w-4 h-4 text-green-500" />
-                      <span className="truncate">Slide_Deck.pptx</span>
-                      <Download className="w-4 h-4 text-gray-400 ml-auto" />
-                    </button>
+              <div className="p-6">
+                {steps.length > 0 ? (
+                  <div className="space-y-0">
+                    {steps.map((step, index) => (
+                      <WorkflowStep
+                        key={step.id}
+                        step={step}
+                        stepNumber={index + 1}
+                        isLast={index === steps.length - 1}
+                      />
+                    ))}
                   </div>
-                </div>
-              )}
+                ) : (
+                  <p className="text-gray-500 text-center py-8">
+                    No workflow steps yet
+                  </p>
+                )}
+              </div>
             </div>
+          </div>
+
+          {/* Sidebar */}
+          <div className="space-y-4">
+            
+            {/* Source Files Card */}
+            <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
+              <div className="px-5 py-4 border-b border-gray-100">
+                <h3 className="font-semibold text-gray-900">
+                  Source Files
+                  <span className="ml-2 text-sm font-normal text-gray-400">
+                    ({sourceFiles.length})
+                  </span>
+                </h3>
+              </div>
+              <div className="p-4">
+                {sourceFiles.length > 0 ? (
+                  <div className="space-y-2">
+                    {sourceFiles.map((file) => (
+                      <button
+                        key={file.id}
+                        onClick={() => handleDownload(file)}
+                        disabled={downloadingId === file.id}
+                        className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors text-left group"
+                      >
+                        <div className="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center">
+                          {downloadingId === file.id ? (
+                            <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />
+                          ) : (
+                            <FileText className="w-4 h-4 text-blue-500" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-700 truncate group-hover:text-blue-600 transition-colors">
+                            {file.name}
+                          </p>
+                          <p className="text-xs text-gray-400">
+                            {formatFileSize(file.size_bytes)}
+                          </p>
+                        </div>
+                        <Download className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors" />
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 text-center py-4">
+                    No files uploaded
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* Generated Files Card */}
+            {(generatedFiles.length > 0 || isCompleted) && (
+              <div className="bg-white rounded-2xl border border-gray-200 shadow-sm">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h3 className="font-semibold text-gray-900">Generated Files</h3>
+                </div>
+                <div className="p-4">
+                  {generatedFiles.length > 0 ? (
+                    <div className="space-y-2">
+                      {generatedFiles.map((file) => (
+                        <button
+                          key={file.id}
+                          onClick={() => handleDownload(file)}
+                          disabled={downloadingId === file.id}
+                          className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-50 transition-colors text-left group"
+                        >
+                          <div className="w-8 h-8 rounded-lg bg-green-50 flex items-center justify-center">
+                            {downloadingId === file.id ? (
+                              <Loader2 className="w-4 h-4 text-green-500 animate-spin" />
+                            ) : (
+                              <CheckCircle2 className="w-4 h-4 text-green-500" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium text-gray-700 truncate group-hover:text-green-600 transition-colors">
+                              {file.name}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {formatFileSize(file.size_bytes)}
+                            </p>
+                          </div>
+                          <Download className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400 text-center py-4">
+                      Files will appear here when ready
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
-

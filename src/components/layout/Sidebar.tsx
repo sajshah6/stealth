@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,8 @@ import { Separator } from "@/components/ui/separator";
 import { Plus, FolderKanban, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { UserMenu } from "./UserMenu";
+import { createClient } from "@/lib/supabase/client";
+import { useAuth } from "@/providers";
 
 /** Main navigation tabs */
 const navItems = [
@@ -16,10 +19,6 @@ const navItems = [
   { icon: FileText, label: "Files", href: "/files" },
 ];
 
-/** 
- * Project status types for styling
- * TODO: Move to shared types file when connecting to backend
- */
 type ProjectStatus = "in_progress" | "completed" | "needs_input";
 
 interface RecentProject {
@@ -28,15 +27,6 @@ interface RecentProject {
   status: ProjectStatus;
   href: string;
 }
-
-/** TODO: Replace with actual project data from database */
-const recentProjects: RecentProject[] = [
-  { id: "1", title: "Biotech Company XYZ", status: "in_progress", href: "/projects/1" },
-  { id: "2", title: "Pharma Holdings Analysis", status: "needs_input", href: "/projects/2" },
-  { id: "3", title: "Gene Therapy Startup", status: "completed", href: "/projects/3" },
-  { id: "4", title: "Medical Devices Corp", status: "completed", href: "/projects/4" },
-  { id: "5", title: "Healthcare REIT Review", status: "completed", href: "/projects/5" },
-];
 
 /** Status indicator styles */
 const statusStyles: Record<ProjectStatus, string> = {
@@ -47,6 +37,41 @@ const statusStyles: Record<ProjectStatus, string> = {
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { user } = useAuth();
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([]);
+
+  useEffect(() => {
+    async function fetchProjects() {
+      if (!user) {
+        setRecentProjects([]);
+        return;
+      }
+
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("projects")
+        .select("id, title, status")
+        .order("updated_at", { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error("Error fetching projects:", error);
+        return;
+      }
+
+      const projects: RecentProject[] = (data || []).map((p) => ({
+        id: p.id,
+        title: p.title,
+        status: (p.status === "needs_input" ? "needs_input" : 
+                 p.status === "completed" ? "completed" : "in_progress") as ProjectStatus,
+        href: `/projects/${p.id}`,
+      }));
+
+      setRecentProjects(projects);
+    }
+
+    fetchProjects();
+  }, [user]);
 
   return (
     <aside className="w-64 border-r border-gray-200 flex flex-col bg-white shrink-0">
@@ -97,29 +122,35 @@ export function Sidebar() {
         <span className="text-xs text-gray-500">Your Projects</span>
       </div>
       <ScrollArea className="flex-1 px-2">
-        {recentProjects.map((project) => {
-          const isActive = pathname === project.href;
-          return (
-            <Link
-              key={project.id}
-              href={project.href}
-              className={cn(
-                "flex items-center gap-2 w-full text-left px-3 py-2 text-sm rounded-lg transition-colors",
-                isActive
-                  ? "bg-gray-100 text-gray-900 font-medium"
-                  : "text-gray-700 hover:bg-gray-100"
-              )}
-            >
-              <span
+        {recentProjects.length > 0 ? (
+          recentProjects.map((project) => {
+            const isActive = pathname === project.href;
+            return (
+              <Link
+                key={project.id}
+                href={project.href}
                 className={cn(
-                  "w-2 h-2 rounded-full shrink-0",
-                  statusStyles[project.status]
+                  "flex items-center gap-2 w-full text-left px-3 py-2 text-sm rounded-lg transition-colors",
+                  isActive
+                    ? "bg-gray-100 text-gray-900 font-medium"
+                    : "text-gray-700 hover:bg-gray-100"
                 )}
-              />
-              <span className="truncate">{project.title}</span>
-            </Link>
-          );
-        })}
+              >
+                <span
+                  className={cn(
+                    "w-2 h-2 rounded-full shrink-0",
+                    statusStyles[project.status]
+                  )}
+                />
+                <span className="truncate">{project.title}</span>
+              </Link>
+            );
+          })
+        ) : user ? (
+          <p className="px-3 py-2 text-sm text-gray-400">No projects yet</p>
+        ) : (
+          <p className="px-3 py-2 text-sm text-gray-400">Sign in to see projects</p>
+        )}
       </ScrollArea>
 
       {/* User Profile / Sign In */}

@@ -94,7 +94,7 @@ export const initialAnalysisStep = defineStep<
   
   llm: {
     provider: "openai",
-    model: "gpt-4-turbo",
+    model: "gpt-4o", // Using gpt-4o for better instruction following
   },
   
   inputFrom: ["files"],

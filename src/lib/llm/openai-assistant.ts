@@ -44,11 +44,11 @@ export async function getDealEvaluatorAssistant(): Promise<string> {
   const assistant = await openai.beta.assistants.create({
     name: "Deal Evaluator v5.3",
     instructions: ASSISTANT_INSTRUCTIONS,
-    model: "gpt-4-turbo",
+    model: "gpt-4o", // Using gpt-4o for better instruction following
     tools: [
       { type: "file_search" },
       { type: "function", function: ANALYSIS_OUTPUT_FUNCTION },
-      { type: "function", function: MEMO_OUTPUT_FUNCTION },
+      // NOTE: No submit_memo_output - memos are written as text
     ],
   });
 
@@ -161,29 +161,46 @@ export async function runAssistant(
       if (call.function.name === "submit_analysis_output") {
         const output = JSON.parse(call.function.arguments) as AnalysisOutput;
         
-        // Submit empty response to complete the run
+        // Submit response and wait for run to complete
         await openai.beta.threads.runs.submitToolOutputs(threadId, run.id, {
           tool_outputs: [{ tool_call_id: call.id, output: "received" }],
         });
         
+        // Wait for run to fully complete
+        let completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+        while (completedRun.status === "queued" || completedRun.status === "in_progress") {
+          await sleep(500);
+          completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+        }
+        console.log("[OpenAI] Run completed with status:", completedRun.status);
+        
         return {
           type: "analysis",
           output,
-          tokensUsed: run.usage?.total_tokens || 0,
+          tokensUsed: completedRun.usage?.total_tokens || 0,
         };
       }
       
       if (call.function.name === "submit_memo_output") {
         const output = JSON.parse(call.function.arguments) as MemoOutput;
         
+        // Submit response and wait for run to complete
         await openai.beta.threads.runs.submitToolOutputs(threadId, run.id, {
           tool_outputs: [{ tool_call_id: call.id, output: "received" }],
         });
         
+        // Wait for run to fully complete
+        let completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+        while (completedRun.status === "queued" || completedRun.status === "in_progress") {
+          await sleep(500);
+          completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+        }
+        console.log("[OpenAI] Run completed with status:", completedRun.status);
+        
         return {
           type: "memo",
           output,
-          tokensUsed: run.usage?.total_tokens || 0,
+          tokensUsed: completedRun.usage?.total_tokens || 0,
         };
       }
     }
@@ -421,72 +438,41 @@ const MEMO_OUTPUT_FUNCTION = {
 };
 
 // =============================================================================
-// ASSISTANT INSTRUCTIONS
+// ASSISTANT INSTRUCTIONS (Deal Evaluator v5.3 Full Spec)
 // =============================================================================
 
 const ASSISTANT_INSTRUCTIONS = `You are the Deal Evaluator v5.3, an expert investment analyst for an Investment Committee (IC).
 
-Your role is to analyze investment opportunities and produce IC memos following a strict framework.
+## CRITICAL BEHAVIOR RULES
 
-## IMPORTANT: Always Use Function Calls for Output
+### 1) For Initial Analysis (when asked to analyze documents and identify archetypes):
+- You MUST call the submit_analysis_output function
+- This provides structured data the system needs
+- Identify the company, asset type, and potential portfolio archetypes
+- If there are conflicting narratives, set clarificationNeeded=true and provide archetypeOptions
 
-When completing analysis, you MUST call the submit_analysis_output function.
-When generating a memo, you MUST call the submit_memo_output function.
-Do NOT just respond with text - always use the appropriate function.
+### 2) For IC Memo Generation (when asked to generate the full memo):
+- Write the FULL memo directly as text/markdown
+- Do NOT call submit_memo_output - just write the memo as your response
+- Write in full depth and detail exactly like you would in ChatGPT
+- Include ALL sections with complete, comprehensive information
+- This is your chance to show your expertise - be thorough
 
-## Phase 1: Initial Analysis
+### 3) File Search (CRITICAL):
+- You MUST use file_search to look up ALL specific numbers, dates, metrics, and facts
+- Do NOT put "TBD" or placeholders anywhere
+- Search the uploaded documents for actual values
+- Include specific revenue figures, margins, growth rates, dates, projections
+- Reference the source document when citing numbers
+- If after searching you truly cannot find a metric, note it in Open Questions
 
-When asked to analyze documents:
-1. Read all provided files thoroughly
-2. Identify the company/investment and asset type
-3. Determine if there are conflicting narratives about the investment
+### 4) Depth Requirements:
+- Be comprehensive, not terse
+- ≥10 distinct source citations across the memo
+- 6-10 Open Questions with full 7-field format
+- ≥6 Dashboard rows with 1-3 priorities marked
+- Base/Bear/Bull cases with specific numbers
+- Write like a senior analyst preparing for an IC meeting
 
-IF there are conflicting narratives (multiple valid investment theses):
-- Set clarificationNeeded = true
-- Provide archetypeOptions for the user to choose from
-- Include conflictingNarratives explaining the different perspectives
-
-IF there is a clear, unambiguous investment thesis:
-- Set clarificationNeeded = false
-- Provide determinedArchetype with your recommended framing
-
-Always include:
-- Comprehensive analysisSummary
-- keyRisks identified
-- openQuestions for further research
-
-## Phase 2: IC Memo Generation
-
-When asked to generate the memo (after archetype is confirmed):
-1. Use the Deal Evaluator v5.3 framework
-2. Structure the memo with all required sections
-3. Call submit_memo_output with the complete memo
-
-The memo must include:
-- Page 1: Executive Summary with "In Plain English" bullets
-- Recommendation: proceed/ask/pass with confidence level
-- Strategy section
-- Risk & Downside with Base/Bear/Bull cases
-- Open Questions (6-10 items)
-- Dashboard items for tracking
-
-## Archetypes (from PF6)
-
-Primary archetypes:
-- Alpha Bet: Manager/operator skill-dependent returns
-- Structure Play: Complex structure, tax advantage, special situation
-- Turnaround: Distressed or recovery situation
-- Platform Bet: Strategic/platform acquisition potential
-- Catalyst Bet: Event-driven opportunity
-- Frontier/Science: High-risk R&D or emerging tech bet
-
-Secondary badges can be combined (max 2 secondary).
-
-## Key Rules
-
-1. Two-source rule: Non-obvious claims need ≥2 independent sources
-2. No placeholders: If data is missing, note it in Open Questions
-3. Be specific: Include actual numbers, dates, and sources
-4. Be balanced: Present both bull and bear cases fairly
-`;
+The user message will contain the full Deal Evaluator v5.3 framework and specific context for each request.`;
 

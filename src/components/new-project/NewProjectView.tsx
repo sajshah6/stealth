@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FileUploader } from "./FileUploader";
 import { useAuth } from "@/providers";
 import { createClient } from "@/lib/supabase/client";
+import { executeWorkflowStep } from "@/lib/actions/workflow";
 import type { UploadedFile } from "@/lib/types";
 
 /**
@@ -15,7 +15,6 @@ import type { UploadedFile } from "@/lib/types";
  * Upload files and start a new research workflow
  */
 export function NewProjectView() {
-  const router = useRouter();
   const { user, signInWithGoogle } = useAuth();
 
   const [projectName, setProjectName] = useState("");
@@ -40,6 +39,7 @@ export function NewProjectView() {
 
     try {
       const supabase = createClient();
+      console.log("[NewProject] Creating project...");
 
       // 1. Create the project
       const { data: project, error: projectError } = await supabase
@@ -55,8 +55,11 @@ export function NewProjectView() {
         .single();
 
       if (projectError) {
+        console.error("[NewProject] Failed to create project:", projectError);
         throw new Error("Failed to create project");
       }
+
+      console.log("[NewProject] Project created:", project.id);
 
       // 2. Upload files to Storage and create file records
       const uploadedFileIds: string[] = [];
@@ -71,6 +74,7 @@ export function NewProjectView() {
 
         // Create storage path: user_id/project_id/timestamp_filename
         const storagePath = `${user.id}/${project.id}/${Date.now()}_${uploadFile.name}`;
+        console.log(`[NewProject] Uploading ${uploadFile.name}...`);
 
         // Upload to Supabase Storage
         const { error: uploadError } = await supabase.storage
@@ -78,7 +82,7 @@ export function NewProjectView() {
           .upload(storagePath, uploadFile.file);
 
         if (uploadError) {
-          console.error("Upload error:", uploadError);
+          console.error("[NewProject] Upload error:", uploadError);
           setFiles((prev) =>
             prev.map((f) =>
               f.id === uploadFile.id
@@ -109,8 +113,7 @@ export function NewProjectView() {
           .single();
 
         if (dbError) {
-          console.error("DB error:", dbError);
-          // Try to clean up uploaded file
+          console.error("[NewProject] DB error:", dbError);
           await supabase.storage.from("project-files").remove([storagePath]);
           setFiles((prev) =>
             prev.map((f) =>
@@ -123,12 +126,16 @@ export function NewProjectView() {
         }
 
         uploadedFileIds.push(fileRecord.id);
+        console.log(`[NewProject] ✓ ${uploadFile.name} uploaded`);
+        
         setFiles((prev) =>
           prev.map((f) =>
             f.id === uploadFile.id ? { ...f, status: "success" as const, progress: 100 } : f
           )
         );
       }
+
+      console.log("[NewProject] All files uploaded:", uploadedFileIds.length);
 
       // 3. Create the first project step (document_upload - completed)
       const { data: firstStepDef } = await supabase
@@ -156,7 +163,7 @@ export function NewProjectView() {
         });
       }
 
-      // 4. Create the second step (initial_analysis - pending)
+      // 4. Create the second step (initial_analysis - in_progress)
       const { data: secondStepDef } = await supabase
         .from("workflow_step_definitions")
         .select("id, step_key")
@@ -171,20 +178,32 @@ export function NewProjectView() {
           step_key: secondStepDef.step_key,
           step_number: 2,
           iteration: 1,
-          status: "pending",
+          status: "in_progress",
+          started_at: new Date().toISOString(),
         });
 
-        // Update project to step 2
         await supabase
           .from("projects")
           .update({ current_step_number: 2 })
           .eq("id", project.id);
       }
 
-      // 5. Redirect to project detail page
-      router.push(`/projects/${project.id}`);
+      console.log("[NewProject] Steps created. Starting workflow and redirecting...");
+
+      // 5. Start workflow in background (fire-and-forget)
+      executeWorkflowStep(project.id, "initial_analysis")
+        .then((result) => {
+          console.log("[NewProject] Workflow result:", result);
+        })
+        .catch((err) => {
+          console.error("[NewProject] Workflow error:", err);
+        });
+
+      // 6. Redirect immediately using window.location (most reliable)
+      window.location.href = `/projects/${project.id}`;
+
     } catch (err) {
-      console.error("Error:", err);
+      console.error("[NewProject] Error:", err);
       setError(err instanceof Error ? err.message : "Something went wrong");
       setIsSubmitting(false);
     }
@@ -262,7 +281,7 @@ export function NewProjectView() {
           {isSubmitting ? (
             <>
               <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-              Creating Project...
+              Uploading Files...
             </>
           ) : !user ? (
             <>

@@ -3,4 +3,5 @@ export { ProjectsListView } from "./ProjectsListView";
 export { ProjectDetailView } from "./ProjectDetailView";
 export { WorkflowStep, type WorkflowStepData, type StepStatus } from "./WorkflowStep";
 export { InputPrompt, type InputPromptData, type InputOption } from "./InputPrompt";
+export { AnalysisControl } from "./AnalysisControl";
 

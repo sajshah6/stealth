@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Download, FileText, Loader2, Building2, Calendar, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { WorkflowStep, type WorkflowStepData, type StepStatus } from "./WorkflowStep";
 import { InputPrompt, type InputPromptData } from "./InputPrompt";
+import { AnalysisControl } from "./AnalysisControl";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { downloadFile } from "@/lib/utils/download";
@@ -73,6 +74,12 @@ function formatTime(dateString: string | null): string | undefined {
   });
 }
 
+interface CurrentStepInfo {
+  key: string;
+  status: string;
+  output: Record<string, unknown> | null;
+}
+
 export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,9 +89,9 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
   const [generatedFiles, setGeneratedFiles] = useState<FileFromDB[]>([]);
   const [totalSteps, setTotalSteps] = useState(0);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [currentStepInfo, setCurrentStepInfo] = useState<CurrentStepInfo | null>(null);
 
-  useEffect(() => {
-    async function fetchData() {
+  const fetchData = useCallback(async () => {
       const supabase = createClient();
 
       try {
@@ -166,16 +173,29 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
         setSourceFiles(source);
         setGeneratedFiles(generated);
 
+        // Track current step info for workflow control
+        const currentStep = projectSteps?.find(
+          (ps: ProjectStepFromDB) => ps.status === "pending" || ps.status === "in_progress" || ps.status === "needs_input"
+        );
+        if (currentStep) {
+          setCurrentStepInfo({
+            key: currentStep.step_key,
+            status: currentStep.status,
+            output: currentStep.output,
+          });
+        }
+
       } catch (err) {
         console.error("Error fetching project:", err);
         setError("Failed to load project");
       } finally {
         setLoading(false);
       }
-    }
+    }, [projectId]);
 
+  useEffect(() => {
     fetchData();
-  }, [projectId]);
+  }, [fetchData]);
 
   const handleDownload = async (file: FileFromDB) => {
     if (downloadingId) return;
@@ -301,8 +321,19 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
           {/* Workflow Timeline */}
           <div className="lg:col-span-2 space-y-4">
             
-            {/* Input Prompt (if needed) */}
-            {needsInput && inputPrompt && (
+            {/* Analysis Control (if on initial_analysis step) */}
+            {currentStepInfo?.key === "initial_analysis" && (
+              <AnalysisControl
+                projectId={projectId}
+                currentStepKey={currentStepInfo.key}
+                currentStepStatus={currentStepInfo.status}
+                existingOutput={currentStepInfo.output as unknown as Parameters<typeof AnalysisControl>[0]["existingOutput"]}
+                onStepComplete={() => fetchData()}
+              />
+            )}
+            
+            {/* Input Prompt (if needed, for non-analysis steps) */}
+            {needsInput && inputPrompt && currentStepInfo?.key !== "initial_analysis" && (
               <InputPrompt prompt={inputPrompt} />
             )}
 

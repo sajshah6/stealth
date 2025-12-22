@@ -103,8 +103,9 @@ export function initializeWorkflow(): void {
     "ic_memo",                 // Step 3: Generate IC memo
     "extract_open_questions",  // Step 4: Extract structured open questions
     "deep_research",           // Step 5: Run Gemini Deep Research (5-30+ min)
+    "research_integration",    // Step 6: Analyze research impact on thesis
+    "final_ic_memo",           // Step 7: Generate final audited IC memo
     // Future steps:
-    // "research_integration",  // Step 6: Integrate research into IC memo
     // "draft_generation",
     // "expert_review",
     // "feedback_consolidation",

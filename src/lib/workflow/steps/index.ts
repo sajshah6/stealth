@@ -10,6 +10,8 @@ export { archetypeSelectionStep, type ArchetypeSelectionOutput } from "./archety
 export { icMemoStep, type ICMemoOutput } from "./ic-memo";
 export { extractOpenQuestionsStep, type ExtractOpenQuestionsOutput } from "./extract-open-questions";
 export { deepResearchStep, type DeepResearchOutput } from "./deep-research";
+export { researchIntegrationStep } from "./research-integration";
+export { finalICMemoStep } from "./final-ic-memo";
 
 // Import to trigger registration
 import "./initial-analysis";
@@ -17,4 +19,6 @@ import "./archetype-selection";
 import "./ic-memo";
 import "./extract-open-questions";
 import "./deep-research";
+import "./research-integration";
+import "./final-ic-memo";
 

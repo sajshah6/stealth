@@ -91,10 +91,16 @@ export async function conductDeepResearch(
       
       console.log(`[GeminiDeepResearch] ✅ Research completed in ${durationMinutes} minutes`);
       
+      // Check if outputs exist
+      if (!result.outputs || result.outputs.length === 0) {
+        throw new Error("Research completed but no outputs found");
+      }
+      
       // Get the final output (last item in outputs array)
       const finalOutput = result.outputs[result.outputs.length - 1];
       
-      if (!finalOutput || !finalOutput.text) {
+      // Type guard: check if output has text property
+      if (!finalOutput || !('text' in finalOutput) || typeof finalOutput.text !== 'string') {
         throw new Error("Research completed but no output text found");
       }
       
@@ -109,9 +115,8 @@ export async function conductDeepResearch(
     }
     
     if (result.status === 'failed') {
-      const error = result.error || "Unknown error";
-      console.error(`[GeminiDeepResearch] ❌ Research failed:`, error);
-      throw new Error(`Research failed: ${error}`);
+      console.error(`[GeminiDeepResearch] ❌ Research failed`);
+      throw new Error(`Research failed with status: ${result.status}`);
     }
     
     // Still in progress - wait 10 seconds before checking again

@@ -15,6 +15,11 @@ export {
 } from "./openai-assistant";
 
 export {
+  callO1,
+  callGPT4o,
+} from "./openai-chat";
+
+export {
   conductDeepResearch,
   type DeepResearchResult,
 } from "./gemini-deep-research";

@@ -20,7 +20,7 @@ export const whitePaperDraft1Step = defineStep({
   name: "White Paper Draft 1",
   description: "Generate decision-ready white paper using Deep Revision framework",
   
-  inputFrom: ["final_ic_memo"],
+  inputFrom: ["final_ic_memo", "initial_analysis"],
   
   llm: {
     provider: "google",
@@ -40,8 +40,12 @@ export const whitePaperDraft1Step = defineStep({
       throw new Error("Final IC memo not found in inputs");
     }
 
-    // Get company name from context (from initial_analysis or project)
-    const companyName = context.companyName || "the company";
+    // Get company name from initial_analysis output
+    const initialAnalysis = inputs.initial_analysis as {
+      companyName?: string;
+    } | undefined;
+    
+    const companyName = initialAnalysis?.companyName || "the company";
 
     console.log("[WhitePaperDraft1] Final memo length:", finalMemo.finalMemoMarkdown.length);
     console.log("[WhitePaperDraft1] Company:", companyName);

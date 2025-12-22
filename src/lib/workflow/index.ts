@@ -105,8 +105,8 @@ export function initializeWorkflow(): void {
     "deep_research",           // Step 5: Run Gemini Deep Research (5-30+ min)
     "research_integration",    // Step 6: Analyze research impact on thesis
     "final_ic_memo",           // Step 7: Generate final audited IC memo
+    "white_paper_draft_1",     // Step 8: Generate white paper using Deep Revision (10-30+ min)
     // Future steps:
-    // "draft_generation",
     // "expert_review",
     // "feedback_consolidation",
     // "final_whitepaper",

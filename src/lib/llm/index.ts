@@ -24,3 +24,8 @@ export {
   type DeepResearchResult,
 } from "./gemini-deep-research";
 
+export {
+  generateWhitePaper,
+  type WhitePaperResult,
+} from "./gemini-white-paper";
+

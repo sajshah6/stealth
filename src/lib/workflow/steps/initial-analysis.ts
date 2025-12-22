@@ -20,6 +20,7 @@ import {
   runAssistant,
   type AnalysisOutput,
 } from "@/lib/llm";
+import { withRetry } from "@/lib/utils/retry";
 
 // =============================================================================
 // OUTPUT TYPE (for context passing)
@@ -190,10 +191,18 @@ Remember:
       console.log("[InitialAnalysis] Adding message to thread with files...");
       await addMessage(threadId, userMessage, uploadedFileIds);
 
-      // 5. Run the assistant
+      // 5. Run the assistant with retry for rate limits
       console.log("[InitialAnalysis] Running assistant (this may take 1-2 minutes)...");
-      const result = await runAssistant(threadId, assistantId);
-      console.log("[InitialAnalysis] Assistant completed. Result type:", result.type);
+      const { result, attempts } = await withRetry(
+        async () => await runAssistant(threadId, assistantId),
+        {
+          maxRetries: 5,
+          initialDelayMs: 2000,
+          maxDelayMs: 120000, // 2 minutes max wait
+          logPrefix: "[InitialAnalysis/runAssistant]",
+        }
+      );
+      console.log(`[InitialAnalysis] Assistant completed (${attempts} attempt${attempts > 1 ? 's' : ''}). Result type: ${result.type}`);
 
       // NOTE: Don't delete files yet - we need them for IC memo generation
       // Files will be cleaned up after ic_memo step completes

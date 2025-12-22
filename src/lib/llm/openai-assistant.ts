@@ -344,6 +344,12 @@ export async function runAssistant(
         }
         console.log("[OpenAI] Run completed with status:", completedRun.status);
         
+        // Check if the run failed after submitting tool outputs
+        if (completedRun.status === "failed") {
+          console.error(`[OpenAI] Run failed after tool output submission:`, completedRun.last_error);
+          throw new Error(`Run failed: ${completedRun.last_error?.message || "Unknown error after tool submission"}`);
+        }
+        
         return {
           type: "analysis",
           output,
@@ -393,6 +399,12 @@ export async function runAssistant(
           ).then(r => r.result);
         }
         console.log("[OpenAI] Run completed with status:", completedRun.status);
+        
+        // Check if the run failed after submitting tool outputs
+        if (completedRun.status === "failed") {
+          console.error(`[OpenAI] Run failed after tool output submission:`, completedRun.last_error);
+          throw new Error(`Run failed: ${completedRun.last_error?.message || "Unknown error after tool submission"}`);
+        }
         
         return {
           type: "memo",
@@ -444,6 +456,12 @@ export async function runAssistant(
         }
         console.log("[OpenAI] Run completed with status:", completedRun.status);
         
+        // Check if the run failed after submitting tool outputs
+        if (completedRun.status === "failed") {
+          console.error(`[OpenAI] Run failed after tool output submission:`, completedRun.last_error);
+          throw new Error(`Run failed: ${completedRun.last_error?.message || "Unknown error after tool submission"}`);
+        }
+        
         return {
           type: "open_questions",
           output,
@@ -467,6 +485,10 @@ export async function runAssistant(
     ).then(r => r.result);
     const lastMessage = messages.data[0];
     
+    console.log(`[OpenAI] Messages count: ${messages.data.length}`);
+    console.log(`[OpenAI] Last message role: ${lastMessage?.role}`);
+    console.log(`[OpenAI] Last message content type: ${lastMessage?.content[0]?.type}`);
+    
     if (lastMessage?.role === "assistant" && lastMessage.content[0]?.type === "text") {
       return {
         type: "text",
@@ -474,13 +496,34 @@ export async function runAssistant(
         tokensUsed: run.usage?.total_tokens || 0,
       };
     }
+    
+    console.error(`[OpenAI] No valid text message found in completed run`);
+    console.error(`[OpenAI] Last message:`, JSON.stringify(lastMessage, null, 2));
   }
 
   // Handle failure
   if (run.status === "failed") {
-    throw new Error(`Run failed: ${run.last_error?.message || "Unknown error"}`);
+    console.error(`[OpenAI] Run failed with error:`, run.last_error);
+    
+    // Create an error object that preserves the OpenAI error code for retry logic
+    const error: any = new Error(`Run failed: ${run.last_error?.message || "Unknown error"}`);
+    error.code = run.last_error?.code;
+    error.status = 429; // Mark as rate limit if applicable
+    
+    // Add rate limit info if available
+    if (run.last_error?.code === 'rate_limit_exceeded') {
+      // Extract retry-after from message if available (e.g., "Please try again in 34.126s")
+      const retryMatch = run.last_error.message?.match(/try again in ([\d.]+)s/);
+      if (retryMatch) {
+        error.headers = { 'retry-after': Math.ceil(parseFloat(retryMatch[1])) };
+      }
+    }
+    
+    throw error;
   }
 
+  console.error(`[OpenAI] Unexpected run status: ${run.status}`);
+  console.error(`[OpenAI] Run object:`, JSON.stringify(run, null, 2));
   throw new Error(`Unexpected run status: ${run.status}`);
 }
 

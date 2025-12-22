@@ -13,6 +13,7 @@ import { defineStep } from "../define-step";
 import { addMessage, runAssistant, deleteFiles, type MemoOutput } from "@/lib/llm";
 import type { InitialAnalysisOutput } from "./initial-analysis";
 import type { ArchetypeSelectionOutput } from "./archetype-selection";
+import { withRetry } from "@/lib/utils/retry";
 
 // =============================================================================
 // OUTPUT TYPE
@@ -164,9 +165,18 @@ export const icMemoStep = defineStep<
       // Add message to existing thread WITH files for file_search
       await addMessage(threadId, memoPrompt, fileIds);
 
-      // Run assistant to generate memo
+      // Run assistant to generate memo with retry for rate limits
       console.log("[ICMemo] Generating IC memo with file_search enabled...");
-      const result = await runAssistant(threadId, assistantId);
+      const { result, attempts } = await withRetry(
+        async () => await runAssistant(threadId, assistantId),
+        {
+          maxRetries: 5,
+          initialDelayMs: 2000,
+          maxDelayMs: 120000, // 2 minutes max wait
+          logPrefix: "[ICMemo/runAssistant]",
+        }
+      );
+      console.log(`[ICMemo] Assistant completed (${attempts} attempt${attempts > 1 ? 's' : ''})`);
 
       // Handle text response (preferred path - full memo as markdown)
       if (result.type === "text") {

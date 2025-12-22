@@ -7,6 +7,7 @@
 
 import { GoogleGenAI } from '@google/genai';
 import type { OpenQuestion } from './openai-assistant';
+import { withRetry } from '@/lib/utils/retry';
 
 // =============================================================================
 // CLIENT
@@ -63,12 +64,21 @@ export async function conductDeepResearch(
   
   console.log("[GeminiDeepResearch] Creating interaction...");
   
-  // Start deep research (background=true means it runs async)
-  const interaction = await client.interactions.create({
-    input: prompt,
-    agent: 'deep-research-pro-preview-12-2025',
-    background: true,
-  });
+  // Start deep research (background=true means it runs async) with retry
+  const interaction = await withRetry(
+    async () => {
+      return await client.interactions.create({
+        input: prompt,
+        agent: 'deep-research-pro-preview-12-2025',
+        background: true,
+      });
+    },
+    {
+      maxRetries: 3,
+      initialDelayMs: 2000,
+      logPrefix: "[GeminiDeepResearch/create]",
+    }
+  ).then(r => r.result);
   
   console.log(`[GeminiDeepResearch] Research started: ${interaction.id}`);
   console.log("[GeminiDeepResearch] Polling for completion (checks every 10s)...");
@@ -83,7 +93,16 @@ export async function conductDeepResearch(
       `[GeminiDeepResearch] Poll #${pollCount} (${elapsedMinutes}m elapsed) - checking status...`
     );
     
-    const result = await client.interactions.get(interaction.id);
+    const result = await withRetry(
+      async () => {
+        return await client.interactions.get(interaction.id);
+      },
+      {
+        maxRetries: 3,
+        initialDelayMs: 1000,
+        logPrefix: "[GeminiDeepResearch/poll]",
+      }
+    ).then(r => r.result);
     
     if (result.status === 'completed') {
       const durationMs = Date.now() - startTime;

@@ -4,6 +4,7 @@
  */
 
 import OpenAI from "openai";
+import { withRetry } from "@/lib/utils/retry";
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -25,23 +26,30 @@ export async function callO1(
   console.log(`[OpenAI-Chat] Calling ${model}...`);
   console.log(`[OpenAI-Chat] Prompt length: ${prompt.length} characters`);
 
-  const startTime = Date.now();
+  // Use retry wrapper for rate limiting and transient failures
+  const { result: response, attempts, totalTimeMs } = await withRetry(
+    async () => {
+      return await openai.chat.completions.create({
+        model,
+        messages: [
+          {
+            role: "user",
+            content: prompt,
+          },
+        ],
+        max_completion_tokens: maxCompletionTokens,
+      });
+    },
+    {
+      maxRetries: 5,
+      initialDelayMs: 1000,
+      logPrefix: `[OpenAI-Chat/${model}]`,
+    }
+  );
 
-  const response = await openai.chat.completions.create({
-    model,
-    messages: [
-      {
-        role: "user",
-        content: prompt,
-      },
-    ],
-    max_completion_tokens: maxCompletionTokens,
-  });
-
-  const duration = Date.now() - startTime;
   const result = response.choices[0]?.message?.content || "";
 
-  console.log(`[OpenAI-Chat] Response received in ${duration}ms`);
+  console.log(`[OpenAI-Chat] Response received in ${totalTimeMs}ms (${attempts} attempt${attempts > 1 ? 's' : ''})`);
   console.log(`[OpenAI-Chat] Response length: ${result.length} characters`);
   console.log(
     `[OpenAI-Chat] Tokens used: ${response.usage?.total_tokens || "unknown"}`
@@ -71,24 +79,31 @@ export async function callGPT4o(
   console.log(`[OpenAI-Chat] Calling gpt-4o...`);
   console.log(`[OpenAI-Chat] Prompt length: ${prompt.length} characters`);
 
-  const startTime = Date.now();
-
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: "system", content: systemMessage },
     { role: "user", content: prompt },
   ];
 
-  const response = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages,
-    temperature,
-    max_tokens: maxTokens,
-  });
+  // Use retry wrapper for rate limiting and transient failures
+  const { result: response, attempts, totalTimeMs } = await withRetry(
+    async () => {
+      return await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages,
+        temperature,
+        max_tokens: maxTokens,
+      });
+    },
+    {
+      maxRetries: 5,
+      initialDelayMs: 1000,
+      logPrefix: "[OpenAI-Chat/gpt-4o]",
+    }
+  );
 
-  const duration = Date.now() - startTime;
   const result = response.choices[0]?.message?.content || "";
 
-  console.log(`[OpenAI-Chat] Response received in ${duration}ms`);
+  console.log(`[OpenAI-Chat] Response received in ${totalTimeMs}ms (${attempts} attempt${attempts > 1 ? 's' : ''})`);
   console.log(`[OpenAI-Chat] Response length: ${result.length} characters`);
   console.log(
     `[OpenAI-Chat] Tokens used: ${response.usage?.total_tokens || "unknown"}`

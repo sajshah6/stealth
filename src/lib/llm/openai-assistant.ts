@@ -6,6 +6,7 @@
  */
 
 import OpenAI from "openai";
+import { withRetry } from "@/lib/utils/retry";
 
 // =============================================================================
 // CLIENT
@@ -72,10 +73,19 @@ export async function uploadFiles(
   const fileIds: string[] = [];
 
   for (const file of files) {
-    const uploaded = await openai.files.create({
-      file: new File([file.data], file.name),
-      purpose: "assistants",
-    });
+    const { result: uploaded } = await withRetry(
+      async () => {
+        return await openai.files.create({
+          file: new File([file.data], file.name),
+          purpose: "assistants",
+        });
+      },
+      {
+        maxRetries: 3,
+        initialDelayMs: 1000,
+        logPrefix: `[OpenAI-Files/${file.name}]`,
+      }
+    );
     fileIds.push(uploaded.id);
   }
 
@@ -90,9 +100,18 @@ export async function deleteFiles(fileIds: string[]): Promise<void> {
   
   for (const id of fileIds) {
     try {
-      await openai.files.del(id);
+      await withRetry(
+        async () => {
+          return await openai.files.del(id);
+        },
+        {
+          maxRetries: 2,
+          initialDelayMs: 500,
+          logPrefix: `[OpenAI-Files/delete/${id}]`,
+        }
+      );
     } catch (err) {
-      console.error(`Failed to delete file ${id}:`, err);
+      console.error(`Failed to delete file ${id} after retries:`, err);
     }
   }
 }
@@ -106,7 +125,16 @@ export async function deleteFiles(fileIds: string[]): Promise<void> {
  */
 export async function createThread(): Promise<string> {
   const openai = getOpenAI();
-  const thread = await openai.beta.threads.create();
+  const { result: thread } = await withRetry(
+    async () => {
+      return await openai.beta.threads.create();
+    },
+    {
+      maxRetries: 3,
+      initialDelayMs: 1000,
+      logPrefix: "[OpenAI-Thread/create]",
+    }
+  );
   return thread.id;
 }
 
@@ -125,11 +153,20 @@ export async function addMessage(
     tools: [{ type: "file_search" as const }],
   }));
 
-  await openai.beta.threads.messages.create(threadId, {
-    role: "user",
-    content,
-    attachments: attachments?.length ? attachments : undefined,
-  });
+  await withRetry(
+    async () => {
+      return await openai.beta.threads.messages.create(threadId, {
+        role: "user",
+        content,
+        attachments: attachments?.length ? attachments : undefined,
+      });
+    },
+    {
+      maxRetries: 3,
+      initialDelayMs: 1000,
+      logPrefix: `[OpenAI-Thread/message/${threadId}]`,
+    }
+  );
 }
 
 /**
@@ -144,12 +181,14 @@ export async function extractOpenQuestions(
   console.log("[ExtractOpenQuestions] Extracting open questions from memo...");
   
   // Use GPT-4o with function calling (not the assistant API, just regular chat completion)
-  const completion = await openai.chat.completions.create({
-    model: "gpt-4o",
-    messages: [
-      {
-        role: "system",
-        content: `You are an expert at extracting structured data from Investment Committee memos.
+  const completion = await withRetry(
+    async () => {
+      return await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert at extracting structured data from Investment Committee memos.
 
 CRITICAL RULES:
 1. Find the "Open Questions" section (usually section 8) in the memo
@@ -198,7 +237,14 @@ Copy EXACTLY. Do not lose ANY detail.`,
       type: "function",
       function: { name: "submit_open_questions" },
     },
-  });
+      });
+    },
+    {
+      maxRetries: 3,
+      initialDelayMs: 1000,
+      logPrefix: "[OpenAI-ExtractQuestions]",
+    }
+  ).then(r => r.result);
   
   const toolCall = completion.choices[0]?.message?.tool_calls?.[0];
   if (!toolCall || toolCall.function.name !== "submit_open_questions") {
@@ -221,15 +267,33 @@ export async function runAssistant(
 ): Promise<AssistantRunResult> {
   const openai = getOpenAI();
 
-  // Start the run
-  let run = await openai.beta.threads.runs.create(threadId, {
-    assistant_id: assistantId,
-  });
+  // Start the run with retry
+  let run = await withRetry(
+    async () => {
+      return await openai.beta.threads.runs.create(threadId, {
+        assistant_id: assistantId,
+      });
+    },
+    {
+      maxRetries: 3,
+      initialDelayMs: 1000,
+      logPrefix: `[OpenAI-Run/create]`,
+    }
+  ).then(r => r.result);
 
-  // Poll until complete
+  // Poll until complete with retry on each poll
   while (run.status === "queued" || run.status === "in_progress") {
     await sleep(1000);
-    run = await openai.beta.threads.runs.retrieve(threadId, run.id);
+    run = await withRetry(
+      async () => {
+        return await openai.beta.threads.runs.retrieve(threadId, run.id);
+      },
+      {
+        maxRetries: 3,
+        initialDelayMs: 500,
+        logPrefix: `[OpenAI-Run/poll]`,
+      }
+    ).then(r => r.result);
   }
 
   // Handle function calls (structured output)
@@ -240,16 +304,43 @@ export async function runAssistant(
       if (call.function.name === "submit_analysis_output") {
         const output = JSON.parse(call.function.arguments) as AnalysisOutput;
         
-        // Submit response and wait for run to complete
-        await openai.beta.threads.runs.submitToolOutputs(threadId, run.id, {
-          tool_outputs: [{ tool_call_id: call.id, output: "received" }],
-        });
+        // Submit response and wait for run to complete with retry
+        await withRetry(
+          async () => {
+            return await openai.beta.threads.runs.submitToolOutputs(threadId, run.id, {
+              tool_outputs: [{ tool_call_id: call.id, output: "received" }],
+            });
+          },
+          {
+            maxRetries: 3,
+            initialDelayMs: 1000,
+            logPrefix: `[OpenAI-Run/submitToolOutputs]`,
+          }
+        );
         
-        // Wait for run to fully complete
-        let completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+        // Wait for run to fully complete with retry on each poll
+        let completedRun = await withRetry(
+          async () => {
+            return await openai.beta.threads.runs.retrieve(threadId, run.id);
+          },
+          {
+            maxRetries: 3,
+            initialDelayMs: 500,
+            logPrefix: `[OpenAI-Run/poll-completion]`,
+          }
+        ).then(r => r.result);
         while (completedRun.status === "queued" || completedRun.status === "in_progress") {
           await sleep(500);
-          completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+          completedRun = await withRetry(
+            async () => {
+              return await openai.beta.threads.runs.retrieve(threadId, run.id);
+            },
+            {
+              maxRetries: 3,
+              initialDelayMs: 500,
+              logPrefix: `[OpenAI-Run/poll-completion]`,
+            }
+          ).then(r => r.result);
         }
         console.log("[OpenAI] Run completed with status:", completedRun.status);
         
@@ -263,16 +354,43 @@ export async function runAssistant(
       if (call.function.name === "submit_memo_output") {
         const output = JSON.parse(call.function.arguments) as MemoOutput;
         
-        // Submit response and wait for run to complete
-        await openai.beta.threads.runs.submitToolOutputs(threadId, run.id, {
-          tool_outputs: [{ tool_call_id: call.id, output: "received" }],
-        });
+        // Submit response and wait for run to complete with retry
+        await withRetry(
+          async () => {
+            return await openai.beta.threads.runs.submitToolOutputs(threadId, run.id, {
+              tool_outputs: [{ tool_call_id: call.id, output: "received" }],
+            });
+          },
+          {
+            maxRetries: 3,
+            initialDelayMs: 1000,
+            logPrefix: `[OpenAI-Run/submitToolOutputs]`,
+          }
+        );
         
-        // Wait for run to fully complete
-        let completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+        // Wait for run to fully complete with retry on each poll
+        let completedRun = await withRetry(
+          async () => {
+            return await openai.beta.threads.runs.retrieve(threadId, run.id);
+          },
+          {
+            maxRetries: 3,
+            initialDelayMs: 500,
+            logPrefix: `[OpenAI-Run/poll-completion]`,
+          }
+        ).then(r => r.result);
         while (completedRun.status === "queued" || completedRun.status === "in_progress") {
           await sleep(500);
-          completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+          completedRun = await withRetry(
+            async () => {
+              return await openai.beta.threads.runs.retrieve(threadId, run.id);
+            },
+            {
+              maxRetries: 3,
+              initialDelayMs: 500,
+              logPrefix: `[OpenAI-Run/poll-completion]`,
+            }
+          ).then(r => r.result);
         }
         console.log("[OpenAI] Run completed with status:", completedRun.status);
         
@@ -286,16 +404,43 @@ export async function runAssistant(
       if (call.function.name === "submit_open_questions") {
         const output = JSON.parse(call.function.arguments) as OpenQuestionsOutput;
         
-        // Submit response and wait for run to complete
-        await openai.beta.threads.runs.submitToolOutputs(threadId, run.id, {
-          tool_outputs: [{ tool_call_id: call.id, output: "received" }],
-        });
+        // Submit response and wait for run to complete with retry
+        await withRetry(
+          async () => {
+            return await openai.beta.threads.runs.submitToolOutputs(threadId, run.id, {
+              tool_outputs: [{ tool_call_id: call.id, output: "received" }],
+            });
+          },
+          {
+            maxRetries: 3,
+            initialDelayMs: 1000,
+            logPrefix: `[OpenAI-Run/submitToolOutputs]`,
+          }
+        );
         
-        // Wait for run to fully complete
-        let completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+        // Wait for run to fully complete with retry on each poll
+        let completedRun = await withRetry(
+          async () => {
+            return await openai.beta.threads.runs.retrieve(threadId, run.id);
+          },
+          {
+            maxRetries: 3,
+            initialDelayMs: 500,
+            logPrefix: `[OpenAI-Run/poll-completion]`,
+          }
+        ).then(r => r.result);
         while (completedRun.status === "queued" || completedRun.status === "in_progress") {
           await sleep(500);
-          completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+          completedRun = await withRetry(
+            async () => {
+              return await openai.beta.threads.runs.retrieve(threadId, run.id);
+            },
+            {
+              maxRetries: 3,
+              initialDelayMs: 500,
+              logPrefix: `[OpenAI-Run/poll-completion]`,
+            }
+          ).then(r => r.result);
         }
         console.log("[OpenAI] Run completed with status:", completedRun.status);
         
@@ -310,7 +455,16 @@ export async function runAssistant(
 
   // Handle completion (text response)
   if (run.status === "completed") {
-    const messages = await openai.beta.threads.messages.list(threadId);
+    const messages = await withRetry(
+      async () => {
+        return await openai.beta.threads.messages.list(threadId);
+      },
+      {
+        maxRetries: 3,
+        initialDelayMs: 500,
+        logPrefix: `[OpenAI-Messages/list]`,
+      }
+    ).then(r => r.result);
     const lastMessage = messages.data[0];
     
     if (lastMessage?.role === "assistant" && lastMessage.content[0]?.type === "text") {

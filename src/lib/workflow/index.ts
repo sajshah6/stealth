@@ -98,12 +98,13 @@ import { setWorkflowOrder } from "./registry";
  */
 export function initializeWorkflow(): void {
   setWorkflowOrder([
-    "initial_analysis",     // Step 1: Analyze documents
-    "archetype_selection",  // Step 2: User selects archetype (or auto-skip)
-    "ic_memo",              // Step 3: Generate IC memo
+    "initial_analysis",        // Step 1: Analyze documents
+    "archetype_selection",     // Step 2: User selects archetype (or auto-skip)
+    "ic_memo",                 // Step 3: Generate IC memo
+    "extract_open_questions",  // Step 4: Extract structured open questions
+    "deep_research",           // Step 5: Run Gemini Deep Research (5-30+ min)
     // Future steps:
-    // "deep_research",
-    // "research_integration",
+    // "research_integration",  // Step 6: Integrate research into IC memo
     // "draft_generation",
     // "expert_review",
     // "feedback_consolidation",

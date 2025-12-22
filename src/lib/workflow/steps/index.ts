@@ -8,9 +8,13 @@
 export { initialAnalysisStep, type InitialAnalysisOutput } from "./initial-analysis";
 export { archetypeSelectionStep, type ArchetypeSelectionOutput } from "./archetype-selection";
 export { icMemoStep, type ICMemoOutput } from "./ic-memo";
+export { extractOpenQuestionsStep, type ExtractOpenQuestionsOutput } from "./extract-open-questions";
+export { deepResearchStep, type DeepResearchOutput } from "./deep-research";
 
 // Import to trigger registration
 import "./initial-analysis";
 import "./archetype-selection";
 import "./ic-memo";
+import "./extract-open-questions";
+import "./deep-research";
 

@@ -172,8 +172,43 @@ export const icMemoStep = defineStep<
       if (result.type === "text") {
         console.log("[ICMemo] Received full memo as text (" + result.text.length + " characters)");
         
+        // Validate memo has all required sections
+        const requiredSections = [
+          "0) Purpose & Canon",
+          "1) Non-Negotiables", 
+          "3) Page-1",
+          "4) Strategy",
+          "5) Operator",
+          "6) Risk & Downside",
+          "8) Open Questions",
+          "9) Quarterly Dashboard",
+          "12) Minimal Ops Checklist"
+        ];
+        
+        const missingSections = requiredSections.filter(
+          section => !result.text.includes(section)
+        );
+        
+        if (missingSections.length > 0) {
+          console.warn(
+            "[ICMemo] WARNING: Memo is missing sections:",
+            missingSections.join(", ")
+          );
+        }
+        
         // Parse metadata from the end of the memo
         const metadata = parseMetadataFromMemo(result.text);
+        
+        // Validate metadata was parsed
+        if (!metadata.recommendation) {
+          console.warn("[ICMemo] WARNING: Failed to parse recommendation from memo");
+        }
+        if (!metadata.keyMetrics || Object.keys(metadata.keyMetrics).length === 0) {
+          console.warn("[ICMemo] WARNING: No key metrics found in memo metadata");
+        }
+        if (!metadata.dashboardItems || metadata.dashboardItems.length === 0) {
+          console.warn("[ICMemo] WARNING: No dashboard items found in memo metadata");
+        }
         
         return {
           status: "completed",

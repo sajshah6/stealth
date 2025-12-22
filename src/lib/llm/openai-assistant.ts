@@ -133,6 +133,85 @@ export async function addMessage(
 }
 
 /**
+ * Extract open questions from a memo using GPT with function calling.
+ * Returns structured open questions data.
+ */
+export async function extractOpenQuestions(
+  memoMarkdown: string
+): Promise<OpenQuestionsOutput> {
+  const openai = getOpenAI();
+  
+  console.log("[ExtractOpenQuestions] Extracting open questions from memo...");
+  
+  // Use GPT-4o with function calling (not the assistant API, just regular chat completion)
+  const completion = await openai.chat.completions.create({
+    model: "gpt-4o",
+    messages: [
+      {
+        role: "system",
+        content: `You are an expert at extracting structured data from Investment Committee memos.
+
+CRITICAL RULES:
+1. Find the "Open Questions" section (usually section 8) in the memo
+2. Extract EVERY SINGLE question - do not skip any
+3. Copy the text EXACTLY as written - do NOT summarize, rephrase, or add interpretation
+4. Preserve ALL details - if a question mentions "US, EU, and Japan", include all three
+5. Extract the FULL text from each field - do not truncate
+
+Each question has these 7 fields:
+1. **Context**: Background for the question
+2. **What we know**: Current information  
+3. **What we need**: Specific information gap
+4. **Why it matters**: Impact on investment thesis
+5. **Source path**: Where to find the answer
+6. **Owner**: Who is responsible
+7. **Due date**: When it's needed
+
+EXAMPLE FROM MEMO:
+"1. **Context:** Timeline for FDA approval in US, EU, and Japan
+   - **What we know:** Products submitted Q4 2024
+   - **What we need:** Region-specific dates and competitor timelines
+   ..."
+
+YOUR EXTRACTION:
+{
+  "context": "Timeline for FDA approval in US, EU, and Japan",
+  "whatWeKnow": "Products submitted Q4 2024", 
+  "whatWeNeed": "Region-specific dates and competitor timelines",
+  ...
+}
+
+Copy EXACTLY. Do not lose ANY detail.`,
+      },
+      {
+        role: "user",
+        content: `Extract all open questions from this IC memo:\n\n${memoMarkdown}`,
+      },
+    ],
+    tools: [
+      {
+        type: "function",
+        function: EXTRACT_OPEN_QUESTIONS_FUNCTION,
+      },
+    ],
+    tool_choice: {
+      type: "function",
+      function: { name: "submit_open_questions" },
+    },
+  });
+  
+  const toolCall = completion.choices[0]?.message?.tool_calls?.[0];
+  if (!toolCall || toolCall.function.name !== "submit_open_questions") {
+    throw new Error("Failed to extract open questions - no function call returned");
+  }
+  
+  const result = JSON.parse(toolCall.function.arguments) as OpenQuestionsOutput;
+  console.log(`[ExtractOpenQuestions] Extracted ${result.openQuestions.length} questions`);
+  
+  return result;
+}
+
+/**
  * Run the assistant on a thread and get the result.
  * Handles function calls and extracts structured output.
  */
@@ -199,6 +278,29 @@ export async function runAssistant(
         
         return {
           type: "memo",
+          output,
+          tokensUsed: completedRun.usage?.total_tokens || 0,
+        };
+      }
+      
+      if (call.function.name === "submit_open_questions") {
+        const output = JSON.parse(call.function.arguments) as OpenQuestionsOutput;
+        
+        // Submit response and wait for run to complete
+        await openai.beta.threads.runs.submitToolOutputs(threadId, run.id, {
+          tool_outputs: [{ tool_call_id: call.id, output: "received" }],
+        });
+        
+        // Wait for run to fully complete
+        let completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+        while (completedRun.status === "queued" || completedRun.status === "in_progress") {
+          await sleep(500);
+          completedRun = await openai.beta.threads.runs.retrieve(threadId, run.id);
+        }
+        console.log("[OpenAI] Run completed with status:", completedRun.status);
+        
+        return {
+          type: "open_questions",
           output,
           tokensUsed: completedRun.usage?.total_tokens || 0,
         };
@@ -290,9 +392,25 @@ export interface MemoOutput {
   }>;
 }
 
+export interface OpenQuestion {
+  question: string;
+  context: string;
+  whatWeKnow: string;
+  whatWeNeed: string;
+  whyItMatters: string;
+  sourcePath: string;
+  owner: string;
+  dueDate: string;
+}
+
+export interface OpenQuestionsOutput {
+  openQuestions: OpenQuestion[];
+}
+
 export type AssistantRunResult = 
   | { type: "analysis"; output: AnalysisOutput; tokensUsed: number }
   | { type: "memo"; output: MemoOutput; tokensUsed: number }
+  | { type: "open_questions"; output: OpenQuestionsOutput; tokensUsed: number }
   | { type: "text"; text: string; tokensUsed: number };
 
 // =============================================================================
@@ -434,6 +552,59 @@ const MEMO_OUTPUT_FUNCTION = {
       },
     },
     required: ["recommendation", "confidence", "archetype", "memoMarkdown", "keyMetrics", "openQuestions", "dashboardItems"],
+  },
+};
+
+const EXTRACT_OPEN_QUESTIONS_FUNCTION = {
+  name: "submit_open_questions",
+  description: "Submit the extracted open questions from an IC memo in structured format",
+  parameters: {
+    type: "object",
+    properties: {
+      openQuestions: {
+        type: "array",
+        description: "Array of open questions from the memo",
+        items: {
+          type: "object",
+          properties: {
+            question: {
+              type: "string",
+              description: "The main question - copy EXACTLY as written in the memo, preserve all detail",
+            },
+            context: {
+              type: "string",
+              description: "Background context - copy the FULL text from the memo verbatim",
+            },
+            whatWeKnow: {
+              type: "string",
+              description: "What we know - extract the COMPLETE text, do not summarize",
+            },
+            whatWeNeed: {
+              type: "string",
+              description: "What we need - extract the FULL text exactly as written",
+            },
+            whyItMatters: {
+              type: "string",
+              description: "Why it matters - copy the COMPLETE explanation from the memo",
+            },
+            sourcePath: {
+              type: "string",
+              description: "Source path - extract EXACTLY as written (e.g., 'regulatory filings, market research')",
+            },
+            owner: {
+              type: "string",
+              description: "Owner - copy the exact name/role from the memo",
+            },
+            dueDate: {
+              type: "string",
+              description: "Due date - extract exactly as written (e.g., 'Q1 2026')",
+            },
+          },
+          required: ["question", "context", "whatWeKnow", "whatWeNeed", "whyItMatters", "sourcePath", "owner", "dueDate"],
+        },
+      },
+    },
+    required: ["openQuestions"],
   },
 };
 

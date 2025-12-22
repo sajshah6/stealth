@@ -52,7 +52,7 @@ export function Sidebar() {
         .from("projects")
         .select("id, title, status")
         .order("updated_at", { ascending: false })
-        .limit(10);
+        .limit(50); // Show up to 50 recent projects
 
       if (error) {
         console.error("Error fetching projects:", error);
@@ -74,9 +74,9 @@ export function Sidebar() {
   }, [user]);
 
   return (
-    <aside className="w-64 border-r border-gray-200 flex flex-col bg-white shrink-0">
+    <aside className="w-64 h-screen border-r border-gray-200 flex flex-col bg-white shrink-0">
       {/* Logo - Links to home */}
-      <div className="p-3 flex items-center justify-between">
+      <div className="p-3 flex items-center justify-between shrink-0">
         <Link
           href="/"
           className="w-8 h-8 flex items-center justify-center hover:opacity-80 transition-opacity"
@@ -91,7 +91,7 @@ export function Sidebar() {
       </div>
 
       {/* Main Navigation */}
-      <nav className="px-2 space-y-0.5">
+      <nav className="px-2 space-y-0.5 shrink-0">
         {navItems.map((item) => {
           const isActive =
             item.href === "/"
@@ -115,13 +115,13 @@ export function Sidebar() {
         })}
       </nav>
 
-      <Separator className="my-4" />
+      <Separator className="my-4 shrink-0" />
 
       {/* Recent Projects */}
-      <div className="px-4 mb-2">
+      <div className="px-4 mb-2 shrink-0">
         <span className="text-xs text-gray-500">Your Projects</span>
       </div>
-      <ScrollArea className="flex-1 px-2">
+      <ScrollArea className="flex-1 min-h-0 px-2">
         {recentProjects.length > 0 ? (
           recentProjects.map((project) => {
             const isActive = pathname === project.href;
@@ -154,7 +154,9 @@ export function Sidebar() {
       </ScrollArea>
 
       {/* User Profile / Sign In */}
-      <UserMenu />
+      <div className="shrink-0">
+        <UserMenu />
+      </div>
     </aside>
   );
 }

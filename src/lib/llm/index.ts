@@ -29,3 +29,12 @@ export {
   type WhitePaperResult,
 } from "./gemini-white-paper";
 
+export {
+  type ExpertReview,
+  type ExpertPanelResult,
+} from "./expert-panel";
+
+export { getGPTExpertPanel } from "./expert-panel-gpt";
+export { getClaudeExpertPanel } from "./expert-panel-claude";
+export { getGeminiExpertPanel } from "./expert-panel-gemini";
+

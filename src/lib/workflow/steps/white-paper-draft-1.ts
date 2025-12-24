@@ -7,9 +7,12 @@
 
 import { defineStep } from "../define-step";
 import { generateWhitePaper, type WhitePaperResult } from "@/lib/llm/gemini-white-paper";
+import { createClient } from "@/lib/supabase/server";
 
 interface WhitePaperDraft1Output {
-  whitePaperMarkdown: string;
+  draftId: string;  // UUID of the draft in white_paper_drafts table
+  draftVersion: number;  // Always 1 for this step
+  wordCount: number;
   geminiInteractionId: string;
   generationDurationMs: number;
   companyName: string;
@@ -61,8 +64,36 @@ export const whitePaperDraft1Step = defineStep({
     console.log(`[WhitePaperDraft1] White paper generation completed in ${durationMinutes} minutes`);
     console.log("[WhitePaperDraft1] White paper length:", result.whitePaper.length);
 
+    // Save to white_paper_drafts table
+    const supabase = await createClient();
+    const wordCount = result.whitePaper.split(/\s+/).length;
+    
+    const { data: draftRecord, error: insertError } = await supabase
+      .from('white_paper_drafts')
+      .insert({
+        project_id: projectId,
+        draft_version: 1,
+        content: result.whitePaper,
+        generated_by: 'gemini_deep_research',
+        generation_method: 'initial',
+        word_count: wordCount,
+        generation_duration_ms: result.durationMs,
+        gemini_interaction_id: result.interactionId,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("[WhitePaperDraft1] Error saving draft:", insertError);
+      throw new Error(`Failed to save white paper draft: ${insertError.message}`);
+    }
+
+    console.log("[WhitePaperDraft1] Draft saved to database:", draftRecord.id);
+
     const output: WhitePaperDraft1Output = {
-      whitePaperMarkdown: result.whitePaper,
+      draftId: draftRecord.id,
+      draftVersion: 1,
+      wordCount,
       geminiInteractionId: result.interactionId,
       generationDurationMs: result.durationMs,
       companyName,

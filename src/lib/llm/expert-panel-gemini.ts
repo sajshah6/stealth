@@ -15,6 +15,7 @@ import {
   validateExpertPanel,
   type ExpertPanelResult,
   type ExpertReview,
+  type ExpertProfile,
 } from "./expert-panel";
 
 let geminiClient: GoogleGenAI | null = null;
@@ -50,6 +51,12 @@ const EXTRACT_EXPERTS_FUNCTION = {
         items: {
           type: "object",
           properties: {
+            expertIndex: {
+              type: "number",
+              description: "The expert's index number (1-15) from the provided panel list",
+              minimum: 1,
+              maximum: 15,
+            },
             name: {
               type: "string",
               description: "Expert's full name",
@@ -64,7 +71,7 @@ const EXTRACT_EXPERTS_FUNCTION = {
             },
             priority: {
               type: "number",
-              description: "Urgency level 1-5 based on rating (1=highest priority): 1 if rating 1-3, 2 if rating 4-6, 3 if rating 7-8",
+              description: "How urgently this concern should be addressed (1=most critical, 5=lowest priority). Use your judgment based on impact.",
               minimum: 1,
               maximum: 5,
             },
@@ -77,7 +84,7 @@ const EXTRACT_EXPERTS_FUNCTION = {
               description: "Expert's feedback",
             },
           },
-          required: ["name", "role", "rating", "priority", "theme", "feedback"],
+          required: ["expertIndex", "name", "role", "rating", "priority", "theme", "feedback"],
         },
         minItems: 15,
         maxItems: 15,
@@ -89,13 +96,15 @@ const EXTRACT_EXPERTS_FUNCTION = {
 
 export async function getGeminiExpertPanel(
   whitePaper: string,
-  companyName: string
+  companyName: string,
+  expertProfiles: ExpertProfile[]
 ): Promise<ExpertPanelResult> {
   console.log("[Gemini-ExpertPanel] Starting review with Gemini Deep Research...");
   console.log("[Gemini-ExpertPanel] White paper length:", whitePaper.length);
+  console.log(`[Gemini-ExpertPanel] Using ${expertProfiles.length} pre-selected expert profiles`);
 
   const gemini = getGeminiClient();
-  const prompt = buildExpertPanelPrompt(whitePaper, companyName);
+  const prompt = buildExpertPanelPrompt(whitePaper, companyName, expertProfiles);
 
   const startTime = Date.now();
 
@@ -193,21 +202,32 @@ export async function getGeminiExpertPanel(
           messages: [
             {
               role: "user",
-              content: `Extract the 15 expert reviews from this text. For each expert, parse:
-- name: Full name with credentials
-- role: Area of expertise
-- rating: Score from 1-10
-- priority: Urgency level 1-5 (1=highest priority):
-  * 1 if rating 1-3 (Critical)
-  * 2 if rating 4-6 (High)
-  * 3 if rating 7-8 (Medium)
-- theme: A concise label (2-4 words) describing the primary focus of their feedback
+              content: `You are extracting structured data from a Gemini Deep Research output.
+
+**ORIGINAL PROMPT SENT TO GEMINI:**
+${prompt}
+
+**GEMINI'S RESPONSE:**
+${geminiOutput}
+
+---
+
+**YOUR TASK:**
+Extract the 15 expert reviews from Gemini's response. For each expert, parse:
+
+- **expertIndex**: The expert's number (1-15) from the original panel list
+- **name**: Full name (should match the expert names from the prompt)
+- **role**: Area of expertise (should match the roles from the prompt)
+- **rating**: Score from 1-10
+- **priority**: How urgently this concern should be addressed (1-5, where 1=most critical, 5=lowest)
+  * Extract from text if mentioned, or infer based on the severity/importance of their feedback
+  * Use your judgment - what matters most for the investment decision?
+- **theme**: A concise label (2-4 words) describing the primary focus of their feedback
   * Examples: "Valuation Methodology", "Market Sizing", "Competitive Moat", "Management Track Record", etc.
   * Extract or infer the most appropriate theme from their feedback
-- feedback: Their detailed feedback
+- **feedback**: Their detailed feedback
 
-Text:
-${geminiOutput}`,
+Make sure you extract reviews for all 15 experts listed in the original prompt.`,
             },
           ],
           tools: [

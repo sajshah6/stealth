@@ -106,7 +106,8 @@ export function initializeWorkflow(): void {
     "research_integration",    // Step 6: Analyze research impact on thesis
     "final_ic_memo",           // Step 7: Generate final audited IC memo
     "white_paper_draft_1",     // Step 8: Generate white paper using Deep Revision (10-30+ min)
-    "expert_panel_review",     // Step 9: Multi-LLM expert panel review with iterative refinement
+    "assemble_expert_panel",   // Step 9a: Assemble 15 experts for review
+    "expert_panel_review",     // Step 9b: Expert panel review with iterative refinement
   ]);
 }
 

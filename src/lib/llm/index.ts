@@ -32,6 +32,7 @@ export {
 export {
   type ExpertReview,
   type ExpertPanelResult,
+  type ExpertProfile,
 } from "./expert-panel";
 
 export { getGPTExpertPanel } from "./expert-panel-gpt";

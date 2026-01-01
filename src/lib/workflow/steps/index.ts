@@ -13,6 +13,7 @@ export { deepResearchStep, type DeepResearchOutput } from "./deep-research";
 export { researchIntegrationStep } from "./research-integration";
 export { finalICMemoStep } from "./final-ic-memo";
 export { whitePaperDraft1Step, type WhitePaperDraft1Output } from "./white-paper-draft-1";
+export { assembleExpertPanelStep, type AssembleExpertPanelOutput, type ExpertProfile } from "./assemble-expert-panel";
 export { expertPanelReviewStep, type ExpertPanelReviewOutput } from "./expert-panel-review";
 
 // Import to trigger registration
@@ -24,5 +25,6 @@ import "./deep-research";
 import "./research-integration";
 import "./final-ic-memo";
 import "./white-paper-draft-1";
+import "./assemble-expert-panel";
 import "./expert-panel-review";
 

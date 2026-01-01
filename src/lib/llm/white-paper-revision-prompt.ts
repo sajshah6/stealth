@@ -325,15 +325,15 @@ function analyzeFeedbackPriority(experts: ExpertReview[]): string {
     .join('\n');
   
   return `
-**🔴 P1 Critical (Rating 1-3):** ${critical} experts
-- These represent fundamental gaps that prevent investment approval
-- Must be fully addressed with substantive additions
+**🔴 P1 Critical:** ${critical} experts
+- Most urgent concerns that must be addressed immediately
+- Fundamental issues impacting investment decision
 
-**🟠 P2 High (Rating 4-6):** ${high} experts
-- Significant weaknesses that reduce confidence in the thesis
-- Require material improvements with new analysis/data
+**🟠 P2 High:** ${high} experts
+- Significant concerns requiring material improvements
+- Important for credibility and completeness
 
-**🟡 P3 Medium (Rating 7-8):** ${medium} experts
+**🟡 P3 Medium:** ${medium} experts
 - Quality enhancements that strengthen the document
 - Address with targeted additions and refinements
 

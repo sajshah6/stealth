@@ -8,7 +8,16 @@
 // TYPES
 // =============================================================================
 
+export interface ExpertProfile {
+  index: number;  // 1-15
+  name: string;
+  role: string;
+  credentials: string;
+  expertise: string;
+}
+
 export interface ExpertReview {
+  expertIndex: number;  // 1-15, matches ExpertProfile.index
   name: string;
   role: string;
   rating: number;  // 1-10
@@ -29,11 +38,23 @@ export interface ExpertPanelResult {
 // PROMPT TEMPLATE
 // =============================================================================
 
+/**
+ * Build prompt for expert panel review with pre-selected experts
+ */
 export function buildExpertPanelPrompt(
   whitePaper: string,
-  companyName: string
+  companyName: string,
+  expertProfiles: ExpertProfile[]
 ): string {
-  return `You are assembling an expert panel to review an investment white paper and provide ratings and feedback.
+  const expertsListText = expertProfiles
+    .map((expert) => {
+      return `**Expert #${expert.index}: ${expert.name}** - ${expert.role}
+   - Credentials: ${expert.credentials}
+   - Expertise: ${expert.expertise}`;
+    })
+    .join('\n\n');
+
+  return `You are role-playing as a panel of 15 investment experts reviewing a white paper.
 
 **Company:** ${companyName}
 
@@ -42,63 +63,67 @@ ${whitePaper}
 
 ---
 
+## THE EXPERT PANEL:
+
+You will role-play as each of these 15 experts, providing feedback from their unique perspective:
+
+${expertsListText}
+
+---
+
 ## YOUR TASK:
 
-1. **Identify the Industry:** Based on the white paper content, determine the company's industry, sector, and business model.
+For EACH of the 15 experts listed above (Expert #1 through Expert #15), provide their review of the white paper.
 
-2. **Assemble 15 Experts:** Create a panel of 15 experts who are best qualified to evaluate this specific investment opportunity. Tailor the panel to the industry and investment context.
+**Each expert must provide:**
 
-   The panel should include (adapted to the specific industry):
-   - Industry analysts and sector specialists
-   - Financial analysts (valuation, modeling, cap structure)
-   - Operational experts (business model, execution risk)
-   - Market strategists (competitive positioning, timing)
-   - Risk managers (downside scenarios, tail risks)
-   - Technical/domain experts (if applicable - e.g., biotech, fintech, etc.)
-   - Investment committee members (portfolio fit, allocation)
+1. **Expert Index:** The expert's number (1-15) from the list above
 
-3. **Each Expert Must Provide:**
-   - **Name:** Full name with credentials
-   - **Role:** Specific area of expertise (be detailed)
-   - **Rating:** Score from 1-10 evaluating the investment white paper quality
-     - 1-3: Major flaws, not investment-ready
-     - 4-6: Significant gaps or concerns
-     - 7-8: Good but needs improvement
-     - 9-10: Excellent, investment-ready
-   - **Priority:** Urgency level from 1-5 based on your rating (1 = highest priority, 5 = lowest):
-     - **1 (Critical)**: If rating 1-3 - Fundamental flaws, not investment-ready
-     - **2 (High)**: If rating 4-6 - Significant gaps or concerns
-     - **3 (Medium)**: If rating 7-8 - Good but needs improvement
-     - **4-5**: Not applicable (ratings 9-10 pass, won't need revision)
-   - **Theme:** A concise label describing the primary focus of your feedback
-     - Examples: "Valuation Methodology", "Market Sizing", "Competitive Moat", "Management Track Record", "Financial Projections", "Risk Quantification", "Data Quality", etc.
-     - Use whatever theme best captures your concern (2-4 words)
-   - **Feedback:** Detailed, actionable feedback on how to improve the white paper
-     - What's missing or unclear
-     - What assumptions need validation
-     - What risks are understated or overstated
-     - Specific suggestions for improvement
+2. **Rating (1-10):** Score evaluating the investment white paper quality
+   - 1-3: Major flaws, not investment-ready
+   - 4-6: Significant gaps or concerns
+   - 7-8: Good but needs improvement
+   - 9-10: Excellent, investment-ready
 
-4. **Rating Criteria:**
-   Each expert should evaluate:
-   - Completeness of analysis
-   - Quality of evidence and sources
-   - Soundness of financial assumptions
-   - Adequacy of risk assessment
-   - Clarity of investment thesis
-   - Actionability for decision-makers
+3. **Priority (1-5):** How urgently their concern should be addressed
+   - **1**: Most critical - must address immediately
+   - **2**: High priority - significant concern
+   - **3**: Medium priority - important but not blocking
+   - **4-5**: Lower priority - nice to have improvements
+
+4. **Theme:** A concise label (2-4 words) describing their primary focus
+   - Examples: "Valuation Methodology", "Market Sizing", "Competitive Moat", "Management Track Record", "Financial Projections", "Risk Quantification", etc.
+
+5. **Feedback:** Detailed, actionable feedback from their expert perspective
+   - What's missing or unclear
+   - What assumptions need validation
+   - What risks are understated or overstated
+   - Specific suggestions for improvement
+
+---
+
+## RATING CRITERIA:
+
+Each expert should evaluate based on their area of expertise:
+- Completeness of analysis
+- Quality of evidence and sources
+- Soundness of assumptions
+- Adequacy of risk assessment
+- Clarity of investment thesis
+- Actionability for decision-makers
 
 ---
 
 ## IMPORTANT:
 
-- Provide EXACTLY 15 experts (no more, no fewer)
+- Provide feedback for ALL 15 experts (no more, no fewer)
+- Role-play each expert authentically based on their background
 - Be critical and thorough - this is for a real investment decision
-- Focus feedback on substantive issues, not minor stylistic points
-- Experts should have diverse perspectives (some bullish, some cautious)
+- Focus on substantive issues relevant to each expert's domain
+- Experts should have diverse perspectives based on their backgrounds
 - Ratings should be honest - don't inflate scores
 
-Assemble your expert panel now.`;
+Provide your expert panel review now.`;
 }
 
 // =============================================================================
@@ -124,39 +149,44 @@ export function validateExpertPanel(experts: ExpertReview[]): void {
     throw new Error(`Must have exactly 15 experts, got ${experts.length}`);
   }
   
+  // Check that all indices 1-15 are present
+  const indices = experts.map(e => e.expertIndex).sort((a, b) => a - b);
+  const expectedIndices = Array.from({ length: 15 }, (_, i) => i + 1);
+  const indicesMatch = indices.length === 15 && indices.every((val, i) => val === expectedIndices[i]);
+  
+  if (!indicesMatch) {
+    throw new Error(`Expert indices must be 1-15 (each used exactly once), got: [${indices.join(', ')}]`);
+  }
+  
   for (let i = 0; i < experts.length; i++) {
     const expert = experts[i];
     
+    if (typeof expert.expertIndex !== 'number' || expert.expertIndex < 1 || expert.expertIndex > 15) {
+      throw new Error(`Expert ${i + 1}: expertIndex must be a number between 1 and 15, got ${expert.expertIndex}`);
+    }
+    
     if (!expert.name || typeof expert.name !== 'string') {
-      throw new Error(`Expert ${i + 1}: name is required and must be a string`);
+      throw new Error(`Expert #${expert.expertIndex}: name is required and must be a string`);
     }
     
     if (!expert.role || typeof expert.role !== 'string') {
-      throw new Error(`Expert ${i + 1}: role is required and must be a string`);
+      throw new Error(`Expert #${expert.expertIndex}: role is required and must be a string`);
     }
     
     if (typeof expert.rating !== 'number' || expert.rating < 1 || expert.rating > 10) {
-      throw new Error(`Expert ${i + 1}: rating must be a number between 1 and 10, got ${expert.rating}`);
+      throw new Error(`Expert #${expert.expertIndex}: rating must be a number between 1 and 10, got ${expert.rating}`);
     }
     
     if (typeof expert.priority !== 'number' || expert.priority < 1 || expert.priority > 5) {
-      throw new Error(`Expert ${i + 1}: priority must be a number between 1 and 5, got ${expert.priority}`);
-    }
-    
-    // Validate priority matches rating
-    const expectedPriority = expert.rating <= 3 ? 1 : 
-                            expert.rating <= 6 ? 2 : 
-                            3;  // rating 7-8
-    if (expert.priority !== expectedPriority) {
-      throw new Error(`Expert ${i + 1}: priority ${expert.priority} doesn't match rating ${expert.rating} (expected ${expectedPriority})`);
+      throw new Error(`Expert #${expert.expertIndex}: priority must be a number between 1 and 5, got ${expert.priority}`);
     }
     
     if (!expert.theme || typeof expert.theme !== 'string' || expert.theme.trim().length === 0) {
-      throw new Error(`Expert ${i + 1}: theme is required and must be a non-empty string`);
+      throw new Error(`Expert #${expert.expertIndex}: theme is required and must be a non-empty string`);
     }
     
     if (!expert.feedback || typeof expert.feedback !== 'string') {
-      throw new Error(`Expert ${i + 1}: feedback is required and must be a string`);
+      throw new Error(`Expert #${expert.expertIndex}: feedback is required and must be a string`);
     }
   }
 }

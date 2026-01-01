@@ -17,9 +17,11 @@ import {
   getGeminiExpertPanel,
   type ExpertPanelResult,
   type ExpertReview,
+  type ExpertProfile,
 } from "@/lib/llm";
 import { generateWhitePaper } from "@/lib/llm/gemini-white-paper";
 import { buildRevisionPrompt } from "@/lib/llm/white-paper-revision-prompt";
+import type { AssembleExpertPanelOutput } from "./assemble-expert-panel";
 
 type ExpertPanelReviewOutput = {
   totalIterations: number;
@@ -43,7 +45,7 @@ export const expertPanelReviewStep = defineStep({
   name: "Expert Panel Review",
   description: "Multi-LLM expert panel review with iterative refinement until all experts score ≥9",
   
-  inputFrom: ["white_paper_draft_1", "initial_analysis"],
+  inputFrom: ["white_paper_draft_1", "initial_analysis", "assemble_expert_panel"],
   
   llm: {
     provider: "google",  // Primary: Gemini Deep Research (revision), with Claude/GPT for review
@@ -60,6 +62,22 @@ export const expertPanelReviewStep = defineStep({
     } | undefined;
     const companyName = initialAnalysis?.companyName || "the company";
 
+    // Get the 15 expert profiles from Step 9a
+    const expertPanelData = inputs.assemble_expert_panel as AssembleExpertPanelOutput | undefined;
+    
+    if (!expertPanelData || !expertPanelData.experts || expertPanelData.experts.length !== 15) {
+      throw new Error("Expert panel from Step 9a not found or invalid");
+    }
+
+    const expertProfiles: ExpertProfile[] = expertPanelData.experts;
+    
+    console.log("[ExpertPanelReview] Using expert panel:");
+    console.log(`[ExpertPanelReview] - Industry: ${expertPanelData.industry}`);
+    console.log(`[ExpertPanelReview] - 15 experts selected in Step 9a`);
+    expertProfiles.forEach((e) => {
+      console.log(`[ExpertPanelReview]   #${e.index}. ${e.name} - ${e.role}`);
+    });
+
     let iteration = 1;
     let allPassed = false;
     let currentDraftVersion = 1;  // Start with draft 1 from previous step
@@ -74,15 +92,16 @@ export const expertPanelReviewStep = defineStep({
       console.log(`[ExpertPanelReview] Draft length: ${currentDraft.length} characters`);
 
       // Run all 3 expert panels in parallel
+      // Each LLM role-plays as the SAME 15 experts selected in Step 9a
       console.log("[ExpertPanelReview] Running 3 expert panels in parallel...");
-      console.log("[ExpertPanelReview] - Claude Opus 4 (15 experts)");
-      console.log("[ExpertPanelReview] - GPT-4o (15 experts)");
-      console.log("[ExpertPanelReview] - Gemini Deep Research (15 experts) - this will take 10-30 min");
+      console.log("[ExpertPanelReview] - Claude Opus 4: role-playing as all 15 experts");
+      console.log("[ExpertPanelReview] - GPT-4o: role-playing as all 15 experts");
+      console.log("[ExpertPanelReview] - Gemini Deep Research: role-playing as all 15 experts (10-30 min)");
 
       const [claudeReview, gptReview, geminiReview] = await Promise.all([
-        getClaudeExpertPanel(currentDraft, companyName),
-        getGPTExpertPanel(currentDraft, companyName),
-        getGeminiExpertPanel(currentDraft, companyName),
+        getClaudeExpertPanel(currentDraft, companyName, expertProfiles),
+        getGPTExpertPanel(currentDraft, companyName, expertProfiles),
+        getGeminiExpertPanel(currentDraft, companyName, expertProfiles),
       ]);
 
       console.log("[ExpertPanelReview] All 3 panels complete!");
@@ -242,9 +261,12 @@ async function saveExpertReviews(
       draft_version: draftVersion,
       provider: 'claude' as const,
       model: claudeReview.model,
+      expert_index: e.expertIndex,
       expert_name: e.name,
       expert_role: e.role,
       rating: e.rating,
+      priority: e.priority,
+      theme: e.theme,
       feedback: e.feedback,
     })),
     ...gptReview.experts.map((e: ExpertReview) => ({
@@ -253,9 +275,12 @@ async function saveExpertReviews(
       draft_version: draftVersion,
       provider: 'gpt' as const,
       model: gptReview.model,
+      expert_index: e.expertIndex,
       expert_name: e.name,
       expert_role: e.role,
       rating: e.rating,
+      priority: e.priority,
+      theme: e.theme,
       feedback: e.feedback,
     })),
     ...geminiReview.experts.map((e: ExpertReview) => ({
@@ -264,9 +289,12 @@ async function saveExpertReviews(
       draft_version: draftVersion,
       provider: 'gemini' as const,
       model: geminiReview.model,
+      expert_index: e.expertIndex,
       expert_name: e.name,
       expert_role: e.role,
       rating: e.rating,
+      priority: e.priority,
+      theme: e.theme,
       feedback: e.feedback,
     })),
   ];

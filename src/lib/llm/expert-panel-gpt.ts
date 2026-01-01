@@ -13,6 +13,7 @@ import {
   validateExpertPanel,
   type ExpertPanelResult,
   type ExpertReview,
+  type ExpertProfile,
 } from "./expert-panel";
 
 const openai = new OpenAI({
@@ -31,6 +32,12 @@ const EXPERT_PANEL_FUNCTION = {
         items: {
           type: "object",
           properties: {
+            expertIndex: {
+              type: "number",
+              description: "The expert's index number (1-15) from the provided panel list",
+              minimum: 1,
+              maximum: 15,
+            },
             name: {
               type: "string",
               description: "Expert's full name with credentials",
@@ -47,7 +54,7 @@ const EXPERT_PANEL_FUNCTION = {
             },
             priority: {
               type: "number",
-              description: "Urgency level 1-5 based on rating (1=highest priority): 1 if rating 1-3, 2 if rating 4-6, 3 if rating 7-8",
+              description: "How urgently this concern should be addressed (1=most critical, 5=lowest priority). Use your judgment based on impact to investment decision.",
               minimum: 1,
               maximum: 5,
             },
@@ -60,7 +67,7 @@ const EXPERT_PANEL_FUNCTION = {
               description: "Detailed, actionable feedback on the white paper",
             },
           },
-          required: ["name", "role", "rating", "priority", "theme", "feedback"],
+          required: ["expertIndex", "name", "role", "rating", "priority", "theme", "feedback"],
         },
         minItems: 15,
         maxItems: 15,
@@ -73,12 +80,14 @@ const EXPERT_PANEL_FUNCTION = {
 export async function getGPTExpertPanel(
   whitePaper: string,
   companyName: string,
+  expertProfiles: ExpertProfile[],
   model: "gpt-4o" | "o1" = "gpt-4o"
 ): Promise<ExpertPanelResult> {
   console.log(`[GPT-ExpertPanel] Starting review with ${model}...`);
   console.log("[GPT-ExpertPanel] White paper length:", whitePaper.length);
+  console.log(`[GPT-ExpertPanel] Using ${expertProfiles.length} pre-selected expert profiles`);
 
-  const prompt = buildExpertPanelPrompt(whitePaper, companyName);
+  const prompt = buildExpertPanelPrompt(whitePaper, companyName, expertProfiles);
 
   // Use retry for rate limits
   const { result: completion, attempts } = await withRetry(

@@ -13,6 +13,7 @@ import {
   validateExpertPanel,
   type ExpertPanelResult,
   type ExpertReview,
+  type ExpertProfile,
 } from "./expert-panel";
 
 let client: Anthropic | null = null;
@@ -40,6 +41,12 @@ const EXPERT_PANEL_TOOL = {
         items: {
           type: "object",
           properties: {
+            expertIndex: {
+              type: "integer",
+              description: "The expert's index number (1-15) from the provided panel list",
+              minimum: 1,
+              maximum: 15,
+            },
             name: {
               type: "string",
               description: "Expert's full name with credentials",
@@ -56,7 +63,7 @@ const EXPERT_PANEL_TOOL = {
             },
             priority: {
               type: "integer",
-              description: "Urgency level 1-5 based on rating (1=highest priority): 1 if rating 1-3, 2 if rating 4-6, 3 if rating 7-8",
+              description: "How urgently this concern should be addressed (1=most critical, 5=lowest priority). Use your judgment based on impact to investment decision.",
               minimum: 1,
               maximum: 5,
             },
@@ -69,7 +76,7 @@ const EXPERT_PANEL_TOOL = {
               description: "Detailed, actionable feedback on the white paper",
             },
           },
-          required: ["name", "role", "rating", "priority", "theme", "feedback"],
+          required: ["expertIndex", "name", "role", "rating", "priority", "theme", "feedback"],
         },
         minItems: 15,
         maxItems: 15,
@@ -82,13 +89,15 @@ const EXPERT_PANEL_TOOL = {
 export async function getClaudeExpertPanel(
   whitePaper: string,
   companyName: string,
+  expertProfiles: ExpertProfile[],
   model: string = "claude-opus-4-20250514"
 ): Promise<ExpertPanelResult> {
   console.log(`[Claude-ExpertPanel] Starting review with ${model}...`);
   console.log("[Claude-ExpertPanel] White paper length:", whitePaper.length);
+  console.log(`[Claude-ExpertPanel] Using ${expertProfiles.length} pre-selected expert profiles`);
 
   const anthropic = getAnthropicClient();
-  const prompt = buildExpertPanelPrompt(whitePaper, companyName);
+  const prompt = buildExpertPanelPrompt(whitePaper, companyName, expertProfiles);
 
   // Use streaming for long requests (required by Claude for >10 min operations)
   console.log("[Claude-ExpertPanel] Using streaming mode for long request...");

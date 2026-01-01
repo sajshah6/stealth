@@ -1,24 +1,27 @@
 "use client";
 
-import { Check, Loader2, AlertCircle, Clock } from "lucide-react";
+import { Check, Loader2, AlertCircle, Clock, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 export type StepStatus = "completed" | "in_progress" | "needs_input" | "pending" | "failed" | "skipped";
 
 export interface WorkflowStepData {
   id: string;
+  stepKey?: string;
   title: string;
   status: StepStatus;
   description?: string;
   agentThoughts?: string[];
   timestamp?: string;
   inputRequest?: Record<string, unknown>;
+  output?: Record<string, unknown>;
 }
 
 interface WorkflowStepProps {
   step: WorkflowStepData;
   stepNumber: number;
   isLast: boolean;
+  onViewOutput?: (step: WorkflowStepData) => void;
 }
 
 const statusIcons: Record<StepStatus, typeof Check> = {
@@ -69,10 +72,11 @@ const statusStyles: Record<StepStatus, { bg: string; icon: string; line: string;
   },
 };
 
-export function WorkflowStep({ step, stepNumber, isLast }: WorkflowStepProps) {
+export function WorkflowStep({ step, stepNumber, isLast, onViewOutput }: WorkflowStepProps) {
   const Icon = statusIcons[step.status];
   const styles = statusStyles[step.status];
   const isActive = step.status === "completed" || step.status === "in_progress" || step.status === "needs_input";
+  const hasOutput = step.status === "completed" && step.output;
 
   return (
     <div className="flex gap-3">
@@ -115,9 +119,20 @@ export function WorkflowStep({ step, stepNumber, isLast }: WorkflowStepProps) {
               </span>
             )}
           </div>
-          {step.timestamp && (
-            <span className="text-xs text-gray-400">{step.timestamp}</span>
-          )}
+          <div className="flex items-center gap-2">
+            {step.timestamp && (
+              <span className="text-xs text-gray-400">{step.timestamp}</span>
+            )}
+            {hasOutput && onViewOutput && (
+              <button
+                onClick={() => onViewOutput(step)}
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 transition-colors"
+              >
+                View Output
+                <ExternalLink className="w-3 h-3" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Description */}

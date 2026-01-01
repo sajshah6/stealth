@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { WorkflowStep, type WorkflowStepData, type StepStatus } from "./WorkflowStep";
 import { InputPrompt, type InputPromptData } from "./InputPrompt";
 import { AnalysisControl } from "./AnalysisControl";
+import { StepOutputModal } from "./StepOutputModal";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
 import { downloadFile } from "@/lib/utils/download";
@@ -90,6 +91,7 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
   const [totalSteps, setTotalSteps] = useState(0);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [currentStepInfo, setCurrentStepInfo] = useState<CurrentStepInfo | null>(null);
+  const [selectedStep, setSelectedStep] = useState<WorkflowStepData | null>(null);
 
   const fetchData = useCallback(async () => {
       const supabase = createClient();
@@ -140,11 +142,13 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
             const output = projectStep.output as Record<string, unknown> | null;
             return {
               id: projectStep.id,
+              stepKey: projectStep.step_key,
               title: stepNameMap[projectStep.step_key] || projectStep.step_key,
               status: projectStep.status as StepStatus,
-              description: output?.result as string | undefined,
+              description: output?.summary as string | undefined,
               timestamp: formatTime(projectStep.completed_at || projectStep.started_at),
               agentThoughts: output?.thoughts as string[] | undefined,
+              output: output,
             };
           } else {
             return {
@@ -351,6 +355,7 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
                         step={step}
                         stepNumber={index + 1}
                         isLast={index === steps.length - 1}
+                        onViewOutput={setSelectedStep}
                       />
                     ))}
                   </div>
@@ -458,6 +463,17 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
             )}
           </div>
         </div>
+
+        {/* Step Output Modal */}
+        {selectedStep && selectedStep.output && (
+          <StepOutputModal
+            isOpen={!!selectedStep}
+            onClose={() => setSelectedStep(null)}
+            stepTitle={selectedStep.title}
+            stepKey={selectedStep.stepKey || selectedStep.id}
+            output={selectedStep.output}
+          />
+        )}
       </div>
     </div>
   );

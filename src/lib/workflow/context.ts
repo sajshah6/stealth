@@ -7,6 +7,7 @@
 
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectContext } from "./types";
+import { getStepNumber } from "./registry";
 
 // =============================================================================
 // LOAD CONTEXT
@@ -148,6 +149,7 @@ export function gatherInputs(
 
 /**
  * Save a step's output to the database.
+ * Uses UPSERT to ensure record exists.
  */
 export async function saveStepOutput(
   projectId: string,
@@ -162,18 +164,39 @@ export async function saveStepOutput(
   console.log(`[Context] Saving output for step "${stepKey}"...`);
   const supabase = await createClient();
 
+  // Get step definition info for UPSERT
+  const { data: stepDef } = await supabase
+    .from("workflow_step_definitions")
+    .select("id")
+    .eq("step_key", stepKey)
+    .single();
+
+  if (!stepDef) {
+    console.error(`[Context] Step definition not found for: ${stepKey}`);
+    return;
+  }
+
+  // Get step number from registry
+  const stepNumber = getStepNumber(stepKey);
+
+  // UPSERT: Update if exists, insert if doesn't
   const { error } = await supabase
     .from("project_steps")
-    .update({
+    .upsert({
+      project_id: projectId,
+      step_definition_id: stepDef.id,
+      step_key: stepKey,
+      step_number: stepNumber,
+      iteration: 1,
       status: "completed",
       output,
       completed_at: new Date().toISOString(),
       llm_model: metadata?.llmModel,
       tokens_used: metadata?.tokensUsed,
       duration_ms: metadata?.durationMs,
-    })
-    .eq("project_id", projectId)
-    .eq("step_key", stepKey);
+    }, {
+      onConflict: "project_id,step_key",
+    });
 
   if (error) {
     console.error(`[Context] Failed to save output for "${stepKey}":`, error);
@@ -203,6 +226,7 @@ export async function saveUserInput(
 
 /**
  * Mark a step as needing user input.
+ * Uses UPSERT to ensure record exists.
  */
 export async function markStepNeedsInput(
   projectId: string,
@@ -211,14 +235,39 @@ export async function markStepNeedsInput(
 ): Promise<void> {
   const supabase = await createClient();
 
-  await supabase
+  // Get step definition info for UPSERT
+  const { data: stepDef } = await supabase
+    .from("workflow_step_definitions")
+    .select("id")
+    .eq("step_key", stepKey)
+    .single();
+
+  if (!stepDef) {
+    console.error(`[Context] Step definition not found for: ${stepKey}`);
+    return;
+  }
+
+  // Get step number from registry
+  const stepNumber = getStepNumber(stepKey);
+
+  // UPSERT: Update if exists, insert if doesn't
+  const { error } = await supabase
     .from("project_steps")
-    .update({
+    .upsert({
+      project_id: projectId,
+      step_definition_id: stepDef.id,
+      step_key: stepKey,
+      step_number: stepNumber,
+      iteration: 1,
       status: "needs_input",
       input_request: inputRequest,
-    })
-    .eq("project_id", projectId)
-    .eq("step_key", stepKey);
+    }, {
+      onConflict: "project_id,step_key",
+    });
+
+  if (error) {
+    console.error(`[Context] Failed to mark step "${stepKey}" as needs_input:`, error);
+  }
 
   // Also update project status
   await supabase
@@ -228,7 +277,53 @@ export async function markStepNeedsInput(
 }
 
 /**
+ * Mark a step as in progress.
+ * Uses UPSERT to ensure record exists.
+ */
+export async function markStepInProgress(
+  projectId: string,
+  stepKey: string
+): Promise<void> {
+  const supabase = await createClient();
+
+  // Get step definition info for UPSERT
+  const { data: stepDef } = await supabase
+    .from("workflow_step_definitions")
+    .select("id")
+    .eq("step_key", stepKey)
+    .single();
+
+  if (!stepDef) {
+    console.error(`[Context] Step definition not found for: ${stepKey}`);
+    return;
+  }
+
+  // Get step number from registry
+  const stepNumber = getStepNumber(stepKey);
+
+  // UPSERT: Update if exists, insert if doesn't
+  const { error } = await supabase
+    .from("project_steps")
+    .upsert({
+      project_id: projectId,
+      step_definition_id: stepDef.id,
+      step_key: stepKey,
+      step_number: stepNumber,
+      iteration: 1,
+      status: "in_progress",
+      started_at: new Date().toISOString(),
+    }, {
+      onConflict: "project_id,step_key",
+    });
+
+  if (error) {
+    console.error(`[Context] Failed to mark step "${stepKey}" as in_progress:`, error);
+  }
+}
+
+/**
  * Mark a step as skipped.
+ * Uses UPSERT to ensure record exists.
  */
 export async function markStepSkipped(
   projectId: string,
@@ -237,15 +332,40 @@ export async function markStepSkipped(
 ): Promise<void> {
   const supabase = await createClient();
 
-  await supabase
+  // Get step definition info for UPSERT
+  const { data: stepDef } = await supabase
+    .from("workflow_step_definitions")
+    .select("id")
+    .eq("step_key", stepKey)
+    .single();
+
+  if (!stepDef) {
+    console.error(`[Context] Step definition not found for: ${stepKey}`);
+    return;
+  }
+
+  // Get step number from registry
+  const stepNumber = getStepNumber(stepKey);
+
+  // UPSERT: Update if exists, insert if doesn't
+  const { error } = await supabase
     .from("project_steps")
-    .update({
+    .upsert({
+      project_id: projectId,
+      step_definition_id: stepDef.id,
+      step_key: stepKey,
+      step_number: stepNumber,
+      iteration: 1,
       status: "skipped",
       output: { skipped: true, reason },
       completed_at: new Date().toISOString(),
-    })
-    .eq("project_id", projectId)
-    .eq("step_key", stepKey);
+    }, {
+      onConflict: "project_id,step_key",
+    });
+
+  if (error) {
+    console.error(`[Context] Failed to mark step "${stepKey}" as skipped:`, error);
+  }
 }
 
 /**

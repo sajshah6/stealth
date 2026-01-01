@@ -18,6 +18,9 @@ import type { InitialAnalysisOutput } from "./initial-analysis";
 // =============================================================================
 
 export interface ArchetypeSelectionOutput {
+  /** Brief summary for timeline display */
+  summary?: string;
+  
   /** The selected/determined archetype */
   archetype: {
     primary: string;
@@ -106,6 +109,7 @@ export const archetypeSelectionStep = defineStep<
       return {
         status: "completed",
         output: {
+          summary: `Archetype: ${primaryOption.primary}`,
           archetype: {
             primary: primaryOption.primary,
             secondary: Array.from(allSecondaries),
@@ -122,6 +126,7 @@ export const archetypeSelectionStep = defineStep<
       return {
         status: "completed",
         output: {
+          summary: `Archetype: ${analysis.determinedArchetype.primary}`,
           archetype: {
             primary: analysis.determinedArchetype.primary,
             secondary: analysis.determinedArchetype.secondary,
@@ -137,6 +142,7 @@ export const archetypeSelectionStep = defineStep<
       return {
         status: "completed",
         output: {
+          summary: `Archetype: ${onlyOption.primary}`,
           archetype: {
             primary: onlyOption.primary,
             secondary: onlyOption.secondary,

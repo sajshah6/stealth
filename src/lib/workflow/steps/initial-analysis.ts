@@ -27,6 +27,9 @@ import { withRetry } from "@/lib/utils/retry";
 // =============================================================================
 
 export interface InitialAnalysisOutput {
+  /** Brief summary for timeline display */
+  summary?: string;
+  
   /** Whether user needs to select an archetype */
   clarificationNeeded: boolean;
   
@@ -225,8 +228,13 @@ Remember:
       console.log("[InitialAnalysis] - archetypeOptions count:", analysis.archetypeOptions?.length || 0);
       console.log("[InitialAnalysis] - keyRisks count:", analysis.keyRisks?.length || 0);
 
-      // 7. Build output
+      // 7. Build output with summary
+      const riskCount = (analysis.keyRisks || []).length;
+      const questionCount = (analysis.openQuestions || []).length;
+      const summary = `${analysis.companyName} - ${analysis.assetType} | ${riskCount} risks, ${questionCount} questions identified`;
+
       const output: InitialAnalysisOutput = {
+        summary, // For timeline display
         clarificationNeeded: analysis.clarificationNeeded,
         analysisSummary: analysis.analysisSummary,
         companyName: analysis.companyName,

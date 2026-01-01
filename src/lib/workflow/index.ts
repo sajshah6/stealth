@@ -67,6 +67,7 @@ export {
   gatherInputs,
   saveStepOutput,
   saveUserInput,
+  markStepInProgress,
   markStepNeedsInput,
   markStepSkipped,
   markStepFailed,

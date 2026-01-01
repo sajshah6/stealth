@@ -137,7 +137,20 @@ export function NewProjectView() {
 
       console.log("[NewProject] All files uploaded:", uploadedFileIds.length);
 
-      // 3. Create the first project step (document_upload - completed)
+      // 3. Get uploaded file details for output
+      const { data: uploadedFiles } = await supabase
+        .from("files")
+        .select("id, name, size_bytes, file_type")
+        .in("id", uploadedFileIds);
+
+      const totalSize = uploadedFiles?.reduce((sum, f) => sum + f.size_bytes, 0) || 0;
+      const formatFileSize = (bytes: number): string => {
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+      };
+
+      // 4. Create the first project step (document_upload - completed)
       const { data: firstStepDef } = await supabase
         .from("workflow_step_definitions")
         .select("id, step_key")
@@ -155,6 +168,8 @@ export function NewProjectView() {
           iteration: 1,
           status: "completed",
           output: {
+            summary: `${uploadedFileIds.length} file${uploadedFileIds.length !== 1 ? 's' : ''} uploaded (${formatFileSize(totalSize)})`,
+            files: uploadedFiles || [],
             files_uploaded: uploadedFileIds.length,
             file_ids: uploadedFileIds,
           },

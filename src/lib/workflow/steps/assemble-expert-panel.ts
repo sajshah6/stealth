@@ -23,6 +23,7 @@ interface ExpertProfile {
 }
 
 interface AssembleExpertPanelOutput {
+  summary?: string;
   experts: ExpertProfile[];
   companyName: string;
   industry: string;
@@ -220,6 +221,7 @@ Assemble your 15-person expert panel now.`;
     });
 
     const output: AssembleExpertPanelOutput = {
+      summary: `15 experts selected for ${result.industry}`,
       experts: expertsWithIndices,
       companyName,
       industry: result.industry,

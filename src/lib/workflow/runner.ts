@@ -12,6 +12,7 @@ import {
   loadProjectContext,
   gatherInputs,
   saveStepOutput,
+  markStepInProgress,
   markStepSkipped,
   markStepFailed,
   markStepNeedsInput,
@@ -70,7 +71,10 @@ export async function runStep(
     const context = await loadProjectContext(projectId);
     console.log(`[Runner] Context loaded. Step outputs available:`, Object.keys(context.stepOutputs));
 
-    // 3. Check skip condition
+    // 3. Mark step as in_progress (now that we're about to run it)
+    await markStepInProgress(projectId, stepKey);
+
+    // 4. Check skip condition
     if (step.skipCondition?.(context)) {
       console.log(`[Runner] Skip condition met for "${stepKey}"`);
       await markStepSkipped(projectId, stepKey, "Skip condition met");
@@ -95,12 +99,12 @@ export async function runStep(
       };
     }
 
-    // 4. Gather inputs from previous steps
+    // 5. Gather inputs from previous steps
     console.log(`[Runner] Gathering inputs from:`, step.inputFrom);
     const inputs = gatherInputs(context, step.inputFrom);
     console.log(`[Runner] Inputs gathered:`, Object.keys(inputs));
 
-    // 5. Execute the step
+    // 6. Execute the step
     console.log(`[Runner] Executing step "${stepKey}"...`);
     const result = await step.execute({
       projectId,
@@ -113,7 +117,7 @@ export async function runStep(
     console.log(`[Runner] Step "${stepKey}" execution completed in ${durationMs}ms`);
     console.log(`[Runner] Result status:`, result.status);
 
-    // 6. Handle result based on status
+    // 7. Handle result based on status
     if (result.status === "completed") {
       console.log(`[Runner] Step "${stepKey}" completed successfully`);
       console.log(`[Runner] Saving output...`);

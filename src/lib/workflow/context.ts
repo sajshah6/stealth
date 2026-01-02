@@ -179,32 +179,33 @@ export async function saveStepOutput(
   // Get step number from registry
   const stepNumber = getStepNumber(stepKey);
 
-  // Check if record exists first
+  // Check if record exists first (check by step_number to match unique constraint)
   const { data: existing } = await supabase
     .from("project_steps")
     .select("id")
     .eq("project_id", projectId)
-    .eq("step_key", stepKey)
+    .eq("step_number", stepNumber)
+    .eq("iteration", 1)
     .maybeSingle();
 
   if (existing) {
     // Update existing record
     const { error } = await supabase
-      .from("project_steps")
-      .update({
-        status: "completed",
-        output,
-        completed_at: new Date().toISOString(),
-        llm_model: metadata?.llmModel,
-        tokens_used: metadata?.tokensUsed,
-        duration_ms: metadata?.durationMs,
-      })
+    .from("project_steps")
+    .update({
+      status: "completed",
+      output,
+      completed_at: new Date().toISOString(),
+      llm_model: metadata?.llmModel,
+      tokens_used: metadata?.tokensUsed,
+      duration_ms: metadata?.durationMs,
+    })
       .eq("id", existing.id);
 
-    if (error) {
-      console.error(`[Context] Failed to save output for "${stepKey}":`, error);
-    } else {
-      console.log(`[Context] Output saved for "${stepKey}"`);
+  if (error) {
+    console.error(`[Context] Failed to save output for "${stepKey}":`, error);
+  } else {
+    console.log(`[Context] Output saved for "${stepKey}"`);
     }
   } else {
     // Insert new record
@@ -277,22 +278,23 @@ export async function markStepNeedsInput(
   // Get step number from registry
   const stepNumber = getStepNumber(stepKey);
 
-  // Check if record exists first
+  // Check if record exists first (check by step_number to match unique constraint)
   const { data: existing } = await supabase
     .from("project_steps")
     .select("id")
     .eq("project_id", projectId)
-    .eq("step_key", stepKey)
+    .eq("step_number", stepNumber)
+    .eq("iteration", 1)
     .maybeSingle();
 
   if (existing) {
     // Update existing record
     const { error } = await supabase
-      .from("project_steps")
-      .update({
-        status: "needs_input",
-        input_request: inputRequest,
-      })
+    .from("project_steps")
+    .update({
+      status: "needs_input",
+      input_request: inputRequest,
+    })
       .eq("id", existing.id);
 
     if (error) {
@@ -349,12 +351,13 @@ export async function markStepInProgress(
   // Get step number from registry
   const stepNumber = getStepNumber(stepKey);
 
-  // Check if record exists first
+  // Check if record exists first (check by step_number to match unique constraint)
   const { data: existing } = await supabase
     .from("project_steps")
     .select("id")
     .eq("project_id", projectId)
-    .eq("step_key", stepKey)
+    .eq("step_number", stepNumber)
+    .eq("iteration", 1)
     .maybeSingle();
 
   if (existing) {
@@ -416,23 +419,24 @@ export async function markStepSkipped(
   // Get step number from registry
   const stepNumber = getStepNumber(stepKey);
 
-  // Check if record exists first
+  // Check if record exists first (check by step_number to match unique constraint)
   const { data: existing } = await supabase
     .from("project_steps")
     .select("id")
     .eq("project_id", projectId)
-    .eq("step_key", stepKey)
+    .eq("step_number", stepNumber)
+    .eq("iteration", 1)
     .maybeSingle();
 
   if (existing) {
     // Update existing record
     const { error } = await supabase
-      .from("project_steps")
-      .update({
-        status: "skipped",
-        output: { skipped: true, reason },
-        completed_at: new Date().toISOString(),
-      })
+    .from("project_steps")
+    .update({
+      status: "skipped",
+      output: { skipped: true, reason },
+      completed_at: new Date().toISOString(),
+    })
       .eq("id", existing.id);
 
     if (error) {

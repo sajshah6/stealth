@@ -5,6 +5,7 @@
  */
 
 // Export step definitions
+export { documentUploadStep, type DocumentUploadOutput } from "./document-upload";
 export { initialAnalysisStep, type InitialAnalysisOutput } from "./initial-analysis";
 export { archetypeSelectionStep, type ArchetypeSelectionOutput } from "./archetype-selection";
 export { icMemoStep, type ICMemoOutput } from "./ic-memo";
@@ -17,6 +18,7 @@ export { assembleExpertPanelStep, type AssembleExpertPanelOutput, type ExpertPro
 export { expertPanelReviewStep, type ExpertPanelReviewOutput } from "./expert-panel-review";
 
 // Import to trigger registration
+import "./document-upload";
 import "./initial-analysis";
 import "./archetype-selection";
 import "./ic-memo";

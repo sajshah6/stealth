@@ -90,7 +90,7 @@ export async function getGPTExpertPanel(
   console.log(`[GPT-ExpertPanel] Iteration: ${iteration}`);
   console.log("[GPT-ExpertPanel] White paper length:", whitePaper.length);
   console.log(`[GPT-ExpertPanel] Using ${expertProfiles.length} pre-selected expert profiles`);
-  
+
   if (iteration > 1) {
     console.log(`[GPT-ExpertPanel] 🔗 Continuing conversation from iteration ${iteration - 1} (${conversationHistory.length} messages)`);
   }
@@ -158,6 +158,7 @@ export async function getGPTExpertPanel(
   console.log(`[GPT-ExpertPanel] - Experts below 9: ${criticalExperts.length}`);
 
   // Update conversation history for next iteration
+  // Important: GPT requires tool_calls to be followed by tool responses
   const updatedConversationHistory = [
     ...conversationHistory,
     {
@@ -169,15 +170,20 @@ export async function getGPTExpertPanel(
       content: completion.choices[0]?.message?.content || null,
       tool_calls: completion.choices[0]?.message?.tool_calls,
     },
+    {
+      role: "tool" as const,
+      tool_call_id: toolCall.id,
+      content: "Review received. Thank you for your expert analysis.",
+    },
   ];
 
   return {
     review: {
-      provider: "gpt",
-      model,
-      experts,
-      averageScore,
-      criticalExperts,
+    provider: "gpt",
+    model,
+    experts,
+    averageScore,
+    criticalExperts,
     },
     conversationHistory: updatedConversationHistory,
   };

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Loader2, AlertCircle, CheckCircle2, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { submitStepUserInput } from "@/lib/actions/workflow";
 import { createClient } from "@/lib/supabase/client";
@@ -59,7 +59,20 @@ export function AnalysisControl({
   const [stepStatus, setStepStatus] = useState(currentStepStatus);
   const [selectedOptions, setSelectedOptions] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showFullAnalysis, setShowFullAnalysis] = useState(false);
+
+  // Update internal state when existingOutput prop changes
+  useEffect(() => {
+    if (existingOutput) {
+      console.log("[AnalysisControl] existingOutput prop changed, updating state");
+      setOutput(existingOutput);
+    }
+  }, [existingOutput]);
+
+  // Update internal state when currentStepStatus prop changes
+  useEffect(() => {
+    console.log("[AnalysisControl] currentStepStatus prop changed:", currentStepStatus);
+    setStepStatus(currentStepStatus);
+  }, [currentStepStatus]);
 
   // Poll for updates when step is in_progress
   useEffect(() => {
@@ -216,95 +229,15 @@ export function AnalysisControl({
       output.archetypeOptions.length > 1 &&
       stepStatus === "needs_input";
 
+    // Only render if archetype selection is needed
+    if (!needsSelection || !output.archetypeOptions) {
+      return null;
+    }
+
     return (
       <div className="space-y-4">
-        {/* Analysis Summary Card */}
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="font-semibold text-gray-900">Analysis Complete</h2>
-            {!needsSelection && (
-              <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full font-medium flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" />
-                Ready
-              </span>
-            )}
-          </div>
-
-          <div className="p-6">
-            {/* Company & Asset Type */}
-            <div className="flex items-center gap-4 mb-4">
-              <span className="text-sm font-medium text-gray-900">
-                {output.companyName}
-              </span>
-              <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
-                {output.assetType}
-              </span>
-            </div>
-
-            {/* Analysis Summary */}
-            <div className="mb-4">
-              <button
-                onClick={() => setShowFullAnalysis(!showFullAnalysis)}
-                className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900"
-              >
-                {showFullAnalysis ? (
-                  <ChevronUp className="w-4 h-4" />
-                ) : (
-                  <ChevronDown className="w-4 h-4" />
-                )}
-                {showFullAnalysis ? "Hide" : "Show"} Analysis Summary
-              </button>
-              {showFullAnalysis && (
-                <div className="mt-3 p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">
-                    {output.analysisSummary}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Auto-selected Archetype */}
-            {!output.clarificationNeeded && output.determinedArchetype && (
-              <div className="p-4 bg-green-50 rounded-lg border border-green-100">
-                <p className="text-sm font-medium text-green-800 mb-1">
-                  Archetype Determined
-                </p>
-                <p className="text-sm text-green-700">
-                  <strong>Primary:</strong> {output.determinedArchetype.primary}
-                  {output.determinedArchetype.secondary.length > 0 && (
-                    <>
-                      {" • "}
-                      <strong>Secondary:</strong>{" "}
-                      {output.determinedArchetype.secondary.join(", ")}
-                    </>
-                  )}
-                </p>
-                <p className="text-xs text-green-600 mt-2">
-                  {output.determinedArchetype.reasoning}
-                </p>
-              </div>
-            )}
-
-            {/* Key Risks */}
-            {output.keyRisks && output.keyRisks.length > 0 && (
-              <div className="mt-4">
-                <p className="text-sm font-medium text-gray-700 mb-2">Key Risks</p>
-                <ul className="space-y-1">
-                  {output.keyRisks.slice(0, 3).map((risk, i) => (
-                    <li key={i} className="text-sm text-gray-600 flex items-start gap-2">
-                      <span className="text-red-500 mt-0.5">•</span>
-                      {risk}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Archetype Selection (if needed) */}
-        {needsSelection && output.archetypeOptions && (
-          <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
+        {/* Archetype Selection */}
+        <div className="bg-white rounded-2xl border border-amber-200 shadow-sm overflow-hidden">
             <div className="px-6 py-4 border-b border-amber-100 bg-amber-50">
               <h2 className="font-semibold text-amber-900">
                 Select Portfolio Role
@@ -411,7 +344,6 @@ export function AnalysisControl({
               </div>
             </div>
           </div>
-        )}
       </div>
     );
   }

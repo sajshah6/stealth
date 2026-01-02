@@ -94,21 +94,22 @@ import { setWorkflowOrder } from "./registry";
  * Initialize the workflow with the default step order.
  * Call this at app startup.
  * 
- * Note: document_upload is NOT included here because it's handled
- * by the UI before the workflow starts (creating project + uploading files).
+ * Note: document_upload is handled by the UI but must be included
+ * in the workflow order so step numbers align with the database.
  */
 export function initializeWorkflow(): void {
   setWorkflowOrder([
-    "initial_analysis",        // Step 1: Analyze documents
-    "archetype_selection",     // Step 2: User selects archetype (or auto-skip)
-    "ic_memo",                 // Step 3: Generate IC memo
-    "extract_open_questions",  // Step 4: Extract structured open questions
-    "deep_research",           // Step 5: Run Gemini Deep Research (5-30+ min)
-    "research_integration",    // Step 6: Analyze research impact on thesis
-    "final_ic_memo",           // Step 7: Generate final audited IC memo
-    "white_paper_draft_1",     // Step 8: Generate white paper using Deep Revision (10-30+ min)
-    "assemble_expert_panel",   // Step 9a: Assemble 15 experts for review
-    "expert_panel_review",     // Step 9b: Expert panel review with iterative refinement
+    "document_upload",         // Step 1: Upload documents (handled by UI)
+    "initial_analysis",        // Step 2: Analyze documents
+    "archetype_selection",     // Step 3: User selects archetype (or auto-determined)
+    "ic_memo",                 // Step 4: Generate IC memo
+    "extract_open_questions",  // Step 5: Extract structured open questions
+    "deep_research",           // Step 6: Run Gemini Deep Research (5-30+ min)
+    "research_integration",    // Step 7: Analyze research impact on thesis
+    "final_ic_memo",           // Step 8: Generate final audited IC memo
+    "white_paper_draft_1",     // Step 9: Generate white paper using Deep Revision (10-30+ min)
+    "assemble_expert_panel",   // Step 10a: Assemble 15 experts for review
+    "expert_panel_review",     // Step 10b: Expert panel review with iterative refinement
   ]);
 }
 

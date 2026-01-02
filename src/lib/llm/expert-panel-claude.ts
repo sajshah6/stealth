@@ -155,12 +155,27 @@ export async function getClaudeExpertPanel(
   const toolUse = message.content.find((block) => block.type === "tool_use");
   
   if (!toolUse || toolUse.type !== "tool_use" || toolUse.name !== "submit_expert_panel_review") {
+    console.error("[Claude-ExpertPanel] ERROR: Claude did not return expert panel review tool use");
+    console.error("[Claude-ExpertPanel] Message content:", JSON.stringify(message.content, null, 2));
     throw new Error("Claude did not return expert panel review tool use");
   }
 
   const result = toolUse.input as { experts: ExpertReview[] };
   
+  console.log("[Claude-ExpertPanel] Tool use input structure:", {
+    hasExperts: 'experts' in result,
+    expertsType: typeof result.experts,
+    expertsIsArray: Array.isArray(result.experts),
+    expertsLength: Array.isArray(result.experts) ? result.experts.length : 'N/A'
+  });
+  
   // Validate the result
+  if (!result.experts || !Array.isArray(result.experts)) {
+    console.error("[Claude-ExpertPanel] ERROR: Invalid experts structure");
+    console.error("[Claude-ExpertPanel] Result:", JSON.stringify(result, null, 2));
+    throw new Error(`Experts must be an array, got: ${typeof result.experts}`);
+  }
+  
   validateExpertPanel(result.experts);
 
   const experts: ExpertReview[] = result.experts;
@@ -173,6 +188,7 @@ export async function getClaudeExpertPanel(
   console.log(`[Claude-ExpertPanel] - Experts below 9: ${criticalExperts.length}`);
 
   // Update conversation history for next iteration
+  // Important: Claude requires tool_use blocks to be followed by tool_result blocks
   const updatedConversationHistory = [
     ...conversationHistory,
     {
@@ -185,15 +201,25 @@ export async function getClaudeExpertPanel(
       role: "assistant" as const,
       content: message.content,
     },
+    {
+      role: "user" as const,
+      content: [
+        {
+          type: "tool_result" as const,
+          tool_use_id: toolUse.id,
+          content: "Review received. Thank you for your expert analysis.",
+        },
+      ],
+    },
   ];
 
   return {
     review: {
-      provider: "claude",
-      model,
-      experts,
-      averageScore,
-      criticalExperts,
+    provider: "claude",
+    model,
+    experts,
+    averageScore,
+    criticalExperts,
     },
     conversationHistory: updatedConversationHistory,
   };

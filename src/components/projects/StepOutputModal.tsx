@@ -1274,9 +1274,9 @@ function ExpertPanelReviewOutput({ output, projectId }: { output: Record<string,
   const totalIterations = output.totalIterations as number;
   const finalResult = output.finalResult as string;
   const latestReview = output.latestReview as {
-    claudeAverage: number;
-    gptAverage: number;
-    geminiAverage: number;
+    claudeAverage?: number;
+    gptAverage?: number;
+    geminiAverage?: number;
     totalExperts: number;
     expertsBelow9: number;
   };

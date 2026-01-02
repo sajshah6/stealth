@@ -1,13 +1,14 @@
 /**
  * Archetype Selection Step
  * 
- * This step handles user selection of investment archetype(s).
+ * This step handles investment archetype determination.
  * 
- * SKIP CONDITIONS:
- * - If initial_analysis.clarificationNeeded === false
- * - If initial_analysis.archetypeOptions.length <= 1
+ * BEHAVIOR:
+ * - If user input was provided (from initial_analysis needs_input), uses selected archetypes
+ * - If archetype was auto-determined by initial_analysis, uses that
+ * - If only one option available, uses that option
  * 
- * When skipped, uses the determinedArchetype from initial analysis.
+ * Always completes successfully with an archetype output.
  */
 
 import { defineStep } from "../define-step";
@@ -49,39 +50,33 @@ export const archetypeSelectionStep = defineStep<
   name: "Archetype Selection",
   description: "User selects investment archetype (or auto-determined if clear)",
   
-  llm: null, // No LLM - this is a user input step (or skip)
+  llm: null, // No LLM - this is a user input step (or auto-determined)
   
   inputFrom: ["initial_analysis"],
   
   mayRequireUserInput: false, // Already handled by initial_analysis step
   
-  // Skip if no clarification was needed
-  skipWhen: (context) => {
-    const analysis = context.stepOutputs.initial_analysis as InitialAnalysisOutput | undefined;
-    
-    if (!analysis) return false;
-    
-    // Skip if no clarification needed
-    if (!analysis.clarificationNeeded) return true;
-    
-    // Skip if only 0 or 1 option
-    if (!analysis.archetypeOptions || analysis.archetypeOptions.length <= 1) return true;
-    
-    return false;
-  },
-  
   async execute({ inputs, context }) {
     const analysis = inputs.initial_analysis;
     const userInput = inputs.initial_analysis_user_input;
 
+    console.log("[ArchetypeSelection] Received userInput:", JSON.stringify(userInput, null, 2));
+    console.log("[ArchetypeSelection] userInput type:", typeof userInput);
+    console.log("[ArchetypeSelection] selectedOptionIds:", (userInput as any)?.selectedOptionIds);
+    console.log("[ArchetypeSelection] analysis.archetypeOptions:", analysis.archetypeOptions?.map(o => ({ id: o.id, label: o.title })));
+
     // Case 1: User provided input (from initial_analysis needs_input)
-    if (userInput && userInput.selectedOptionIds && userInput.selectedOptionIds.length > 0) {
+    const typedUserInput = userInput as UserSelection | undefined;
+    if (typedUserInput && typedUserInput.selectedOptionIds && typedUserInput.selectedOptionIds.length > 0) {
       // Find the selected options
       const selectedOptions = analysis.archetypeOptions?.filter(
-        opt => userInput.selectedOptionIds!.includes(opt.id)
+        opt => typedUserInput.selectedOptionIds!.includes(opt.id)
       ) || [];
 
       if (selectedOptions.length === 0) {
+        console.log("[ArchetypeSelection] ERROR: No valid options matched the selected IDs");
+        console.log("[ArchetypeSelection] Selected IDs:", typedUserInput.selectedOptionIds);
+        console.log("[ArchetypeSelection] Available option IDs:", analysis.archetypeOptions?.map(o => o.id));
         return {
           status: "failed",
           error: "No valid options were selected",
@@ -115,8 +110,8 @@ export const archetypeSelectionStep = defineStep<
             secondary: Array.from(allSecondaries),
           },
           source: "user_selected",
-          selectedOptionIds: userInput.selectedOptionIds,
-          userContext: userInput.additionalContext,
+          selectedOptionIds: typedUserInput.selectedOptionIds,
+          userContext: typedUserInput.additionalContext,
         },
       };
     }

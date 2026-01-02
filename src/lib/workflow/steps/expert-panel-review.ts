@@ -29,10 +29,11 @@ type ExpertPanelReviewOutput = {
   finalResult: "all_passed" | "max_iterations_reached";
   
   // Summary stats for the final iteration
+  // Note: LLM averages can be undefined if that LLM failed in the final iteration
   latestReview: {
-    claudeAverage: number;
-    gptAverage: number;
-    geminiAverage: number;
+    claudeAverage?: number;
+    gptAverage?: number;
+    geminiAverage?: number;
     totalExperts: number;
     expertsBelow9: number;
   };
@@ -102,7 +103,7 @@ export const expertPanelReviewStep = defineStep({
       console.log("[ExpertPanelReview] - Claude Opus 4: role-playing as all 15 experts");
       console.log("[ExpertPanelReview] - GPT-4o: role-playing as all 15 experts");
       console.log("[ExpertPanelReview] - Gemini Deep Research: role-playing as all 15 experts (10-30 min)");
-      
+
       if (iteration > 1) {
         console.log(`[ExpertPanelReview] 🔗 Continuing conversations from iteration ${iteration - 1}`);
         console.log("[ExpertPanelReview] - Claude: Using message history");
@@ -110,56 +111,86 @@ export const expertPanelReviewStep = defineStep({
         console.log("[ExpertPanelReview] - Gemini: Using previous_interaction_id");
       }
 
-      const [claudeResult, gptResult, geminiResult]: [
-        { review: ExpertPanelResult; conversationHistory: any[] },
-        { review: ExpertPanelResult; conversationHistory: any[] },
-        { review: ExpertPanelResult; interactionId: string }
-      ] = await Promise.all([
+      const results: [
+        PromiseSettledResult<{ review: ExpertPanelResult; conversationHistory: any[] }>,
+        PromiseSettledResult<{ review: ExpertPanelResult; conversationHistory: any[] }>,
+        PromiseSettledResult<{ review: ExpertPanelResult; interactionId: string }>
+      ] = await Promise.allSettled([
         getClaudeExpertPanel(currentDraft, companyName, expertProfiles, iteration, claudeConversationHistory),
         getGPTExpertPanel(currentDraft, companyName, expertProfiles, iteration, gptConversationHistory),
         getGeminiExpertPanel(currentDraft, companyName, expertProfiles, iteration, geminiPreviousInteractionId),
       ]);
       
-      // Extract reviews and update conversation state
-      const claudeReview = claudeResult.review;
-      const gptReview = gptResult.review;
-      const geminiReview = geminiResult.review;
+      // Extract successful results and handle failures gracefully
+      const claudeResult: { review: ExpertPanelResult; conversationHistory: any[] } | null = 
+        results[0].status === 'fulfilled' ? results[0].value : null;
+      const gptResult: { review: ExpertPanelResult; conversationHistory: any[] } | null = 
+        results[1].status === 'fulfilled' ? results[1].value : null;
+      const geminiResult: { review: ExpertPanelResult; interactionId: string } | null = 
+        results[2].status === 'fulfilled' ? results[2].value : null;
       
-      // Update conversation state for next iteration
-      claudeConversationHistory = claudeResult.conversationHistory;
-      gptConversationHistory = gptResult.conversationHistory;
-      geminiPreviousInteractionId = geminiResult.interactionId;
+      // Log any failures
+      if (results[0].status === 'rejected') {
+        console.error('[ExpertPanelReview] ❌ Claude failed:', results[0].reason?.message || results[0].reason);
+      }
+      if (results[1].status === 'rejected') {
+        console.error('[ExpertPanelReview] ❌ GPT failed:', results[1].reason?.message || results[1].reason);
+      }
+      if (results[2].status === 'rejected') {
+        console.error('[ExpertPanelReview] ❌ Gemini failed:', results[2].reason?.message || results[2].reason);
+      }
+      
+      // Require at least 2 out of 3 LLMs to succeed
+      const successCount = [claudeResult, gptResult, geminiResult].filter(r => r !== null).length;
+      if (successCount < 2) {
+        throw new Error(`Too many LLM failures: only ${successCount}/3 succeeded. Need at least 2 to continue.`);
+      }
+      
+      console.log(`[ExpertPanelReview] ${successCount}/3 panels completed successfully`);
+      
+      // Extract reviews and update conversation state (only for successful ones)
+      const claudeReview = claudeResult?.review;
+      const gptReview = gptResult?.review;
+      const geminiReview = geminiResult?.review;
+      
+      // Update conversation state for next iteration (preserve state even if one failed)
+      if (claudeResult) claudeConversationHistory = claudeResult.conversationHistory;
+      if (gptResult) gptConversationHistory = gptResult.conversationHistory;
+      if (geminiResult) geminiPreviousInteractionId = geminiResult.interactionId;
 
-      console.log("[ExpertPanelReview] All 3 panels complete!");
-      console.log(`[ExpertPanelReview] - Claude average: ${claudeReview.averageScore}`);
-      console.log(`[ExpertPanelReview] - GPT average: ${gptReview.averageScore}`);
-      console.log(`[ExpertPanelReview] - Gemini average: ${geminiReview.averageScore}`);
+      // Log averages for successful LLMs
+      if (claudeReview) console.log(`[ExpertPanelReview] - Claude average: ${claudeReview.averageScore}`);
+      if (gptReview) console.log(`[ExpertPanelReview] - GPT average: ${gptReview.averageScore}`);
+      if (geminiReview) console.log(`[ExpertPanelReview] - Gemini average: ${geminiReview.averageScore}`);
 
-      // Save all 45 expert reviews to database
+      // Save all expert reviews to database (only from successful LLMs)
       await saveExpertReviews(
         projectId,
         iteration,
         currentDraftVersion,
-        claudeReview,
-        gptReview,
-        geminiReview
+        claudeReview || null,
+        gptReview || null,
+        geminiReview || null
       );
 
-      // Aggregate all 45 reviews
+      // Aggregate all reviews (only from successful LLMs)
       const allExperts = [
-        ...claudeReview.experts,
-        ...gptReview.experts,
-        ...geminiReview.experts,
+        ...(claudeReview?.experts || []),
+        ...(gptReview?.experts || []),
+        ...(geminiReview?.experts || []),
       ];
+      
+      const totalReviews = allExperts.length;
+      console.log(`[ExpertPanelReview] Total expert reviews collected: ${totalReviews}`);
 
       const expertsBelow9 = allExperts.filter(e => e.rating < 9);
 
-      console.log(`[ExpertPanelReview] Results: ${expertsBelow9.length}/45 experts scored below 9`);
+      console.log(`[ExpertPanelReview] Results: ${expertsBelow9.length}/${totalReviews} experts scored below 9`);
 
       // Check if all passed
       if (expertsBelow9.length === 0) {
         allPassed = true;
-        console.log(`[ExpertPanelReview] ✅ SUCCESS! All 45 experts scored ≥9`);
+        console.log(`[ExpertPanelReview] ✅ SUCCESS! All ${totalReviews} experts scored ≥9`);
         console.log(`[ExpertPanelReview] White paper approved after ${iteration} iteration(s)`);
         
         const output: ExpertPanelReviewOutput = {
@@ -167,10 +198,10 @@ export const expertPanelReviewStep = defineStep({
           finalDraftVersion: currentDraftVersion,
           finalResult: "all_passed",
           latestReview: {
-            claudeAverage: claudeReview.averageScore,
-            gptAverage: gptReview.averageScore,
-            geminiAverage: geminiReview.averageScore,
-            totalExperts: 45,
+            claudeAverage: claudeReview?.averageScore,
+            gptAverage: gptReview?.averageScore,
+            geminiAverage: geminiReview?.averageScore,
+            totalExperts: totalReviews,
             expertsBelow9: 0,
           },
         };
@@ -192,10 +223,10 @@ export const expertPanelReviewStep = defineStep({
           finalDraftVersion: currentDraftVersion,
           finalResult: "max_iterations_reached",
           latestReview: {
-            claudeAverage: claudeReview.averageScore,
-            gptAverage: gptReview.averageScore,
-            geminiAverage: geminiReview.averageScore,
-            totalExperts: 45,
+            claudeAverage: claudeReview?.averageScore,
+            gptAverage: gptReview?.averageScore,
+            geminiAverage: geminiReview?.averageScore,
+            totalExperts: totalReviews,
             expertsBelow9: expertsBelow9.length,
           },
         };
@@ -271,17 +302,15 @@ async function saveExpertReviews(
   projectId: string,
   iteration: number,
   draftVersion: number,
-  claudeReview: ExpertPanelResult,
-  gptReview: ExpertPanelResult,
-  geminiReview: ExpertPanelResult
+  claudeReview: ExpertPanelResult | null,
+  gptReview: ExpertPanelResult | null,
+  geminiReview: ExpertPanelResult | null
 ): Promise<void> {
-  console.log(`[ExpertPanelReview] Saving 45 expert reviews to database...`);
-
   const supabase = await createClient();
 
-  // Build rows for all 45 experts
+  // Build rows only for LLMs that succeeded
   const rows = [
-    ...claudeReview.experts.map((e: ExpertReview) => ({
+    ...(claudeReview ? claudeReview.experts.map((e: ExpertReview) => ({
       project_id: projectId,
       iteration,
       draft_version: draftVersion,
@@ -294,8 +323,8 @@ async function saveExpertReviews(
       priority: e.priority,
       theme: e.theme,
       feedback: e.feedback,
-    })),
-    ...gptReview.experts.map((e: ExpertReview) => ({
+    })) : []),
+    ...(gptReview ? gptReview.experts.map((e: ExpertReview) => ({
       project_id: projectId,
       iteration,
       draft_version: draftVersion,
@@ -308,8 +337,8 @@ async function saveExpertReviews(
       priority: e.priority,
       theme: e.theme,
       feedback: e.feedback,
-    })),
-    ...geminiReview.experts.map((e: ExpertReview) => ({
+    })) : []),
+    ...(geminiReview ? geminiReview.experts.map((e: ExpertReview) => ({
       project_id: projectId,
       iteration,
       draft_version: draftVersion,
@@ -322,8 +351,13 @@ async function saveExpertReviews(
       priority: e.priority,
       theme: e.theme,
       feedback: e.feedback,
-    })),
+    })) : []),
   ];
+
+  if (rows.length === 0) {
+    console.log(`[ExpertPanelReview] ⚠️ No reviews to save (all LLMs failed)`);
+    return;
+  }
 
   const { error } = await supabase
     .from('expert_panel_reviews')
@@ -333,7 +367,7 @@ async function saveExpertReviews(
     throw new Error(`Failed to save expert reviews: ${error.message}`);
   }
 
-  console.log(`[ExpertPanelReview] ✅ Saved 45 reviews for iteration ${iteration}`);
+  console.log(`[ExpertPanelReview] ✅ Saved ${rows.length} reviews for iteration ${iteration}`);
 }
 
 /**

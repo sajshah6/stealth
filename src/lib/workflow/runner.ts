@@ -215,9 +215,9 @@ export async function submitUserInput(
   
   // Save the user input
   await saveUserInput(projectId, stepKey, userInput);
-  
-  // Mark this step as completed
-  await saveStepOutput(projectId, stepKey, { userInput });
+
+  // Mark this step as completed (without overwriting the output)
+  await markStepCompletedAfterInput(projectId, stepKey);
   
   // Get and run the next step
   const nextKey = getNextStepKey(stepKey);
@@ -338,6 +338,25 @@ async function savePartialOutput(
     .from("project_steps")
     .update({
       output: { ...output, _partial: true },
+    })
+    .eq("project_id", projectId)
+    .eq("step_key", stepKey);
+}
+
+/**
+ * Mark a step as completed after user input (without changing output).
+ */
+async function markStepCompletedAfterInput(
+  projectId: string,
+  stepKey: string
+): Promise<void> {
+  const supabase = await createClient();
+
+  await supabase
+    .from("project_steps")
+    .update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
     })
     .eq("project_id", projectId)
     .eq("step_key", stepKey);

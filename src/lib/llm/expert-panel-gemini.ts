@@ -298,11 +298,11 @@ Make sure you extract reviews for all 15 experts listed in the original prompt.`
 
   return {
     review: {
-      provider: "gemini",
-      model: "deep-research-pro-preview-12-2025",
-      experts,
-      averageScore,
-      criticalExperts,
+    provider: "gemini",
+    model: "deep-research-pro-preview-12-2025",
+    experts,
+    averageScore,
+    criticalExperts,
     },
     interactionId: interaction.id,
   };

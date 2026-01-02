@@ -308,6 +308,18 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
       }
     : null;
 
+  // Find initial_analysis and archetype_selection steps for AnalysisControl visibility
+  const initialAnalysisStep = steps.find((s) => s.stepKey === "initial_analysis");
+  const archetypeSelectionStep = steps.find((s) => s.stepKey === "archetype_selection");
+  
+  // Show AnalysisControl if:
+  // 1. initial_analysis has completed or is in progress/needs_input
+  // 2. AND archetype_selection hasn't completed yet (hide once user selects)
+  const shouldShowAnalysisControl = 
+    initialAnalysisStep &&
+    (initialAnalysisStep.status === "completed" || initialAnalysisStep.status === "needs_input" || initialAnalysisStep.status === "in_progress") &&
+    (!archetypeSelectionStep || archetypeSelectionStep.status !== "completed");
+
   return (
     <div className="flex-1 overflow-auto bg-gray-50/50">
       <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -378,19 +390,19 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
           {/* Workflow Timeline */}
           <div className="lg:col-span-2 space-y-4">
             
-            {/* Analysis Control (if on initial_analysis step) */}
-            {currentStepInfo?.key === "initial_analysis" && (
+            {/* Analysis Control (show until archetype selection is complete) */}
+            {shouldShowAnalysisControl && initialAnalysisStep && (
               <AnalysisControl
                 projectId={projectId}
-                currentStepKey={currentStepInfo.key}
-                currentStepStatus={currentStepInfo.status}
-                existingOutput={currentStepInfo.output as unknown as Parameters<typeof AnalysisControl>[0]["existingOutput"]}
+                currentStepKey={initialAnalysisStep.stepKey || "initial_analysis"}
+                currentStepStatus={initialAnalysisStep.status}
+                existingOutput={initialAnalysisStep.output as unknown as Parameters<typeof AnalysisControl>[0]["existingOutput"]}
                 onStepComplete={() => fetchData()}
               />
             )}
             
             {/* Input Prompt (if needed, for non-analysis steps) */}
-            {needsInput && inputPrompt && currentStepInfo?.key !== "initial_analysis" && (
+            {needsInput && inputPrompt && !shouldShowAnalysisControl && (
               <InputPrompt prompt={inputPrompt} />
             )}
 

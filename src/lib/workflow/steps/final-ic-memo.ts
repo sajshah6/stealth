@@ -10,7 +10,7 @@ import { callO1 } from "@/lib/llm/openai-chat";
 
 interface FinalICMemoOutput {
   finalMemoMarkdown: string;
-  recommendation: "buy" | "sell" | "hold" | "ask";
+  recommendation: "invest" | "pass";
   confidence: "high" | "medium" | "low";
   sectionsIncluded: string[];
   changesSummary: string;
@@ -73,7 +73,7 @@ Use the Deal Evaluator v2 — Instruction v5.3 format with ALL 13 SECTIONS:
 **Section 3: Page-1 — Executive Summary**
 - "In Plain English" box with 3-5 bullets
 - Summary Block (Model, Float/ADV, Valuation Tiles, SBC/Dilution, Top-3 Risks)
-- Recommendation (⬆️ Proceed | ⚠️ Ask | ⛔ Pass with Primary/Secondary archetype)
+- Recommendation (✓ Invest | ✗ Pass with Primary/Secondary archetype)
 - Chain-of-Thought (2-3 sentences)
 - Null (single fact that would falsify)
 - Breakpoint (metric/level for review/exit)
@@ -151,7 +151,7 @@ Write the full IC memo as markdown text. At the very END, add this metadata sect
 ---
 ## MEMO METADATA (for system parsing)
 
-**Recommendation**: [proceed/ask/pass]
+**Recommendation**: [invest/pass]
 **Confidence**: [high/medium/low]
 **Primary Archetype**: [archetype name]
 **Secondary Archetypes**: [list]
@@ -265,7 +265,7 @@ export const finalICMemoStep = defineStep({
 
     const output: FinalICMemoOutput = {
       finalMemoMarkdown: finalMemoText,
-      recommendation: metadata.recommendation || "ask",
+      recommendation: metadata.recommendation || "pass",
       confidence: metadata.confidence || "medium",
       sectionsIncluded,
       changesSummary,
@@ -285,11 +285,11 @@ export const finalICMemoStep = defineStep({
  * Parse metadata from the memo markdown
  */
 function parseMetadataFromMemo(markdown: string): {
-  recommendation?: "buy" | "sell" | "hold" | "ask";
+  recommendation?: "invest" | "pass";
   confidence?: "high" | "medium" | "low";
 } {
   const result: {
-    recommendation?: "buy" | "sell" | "hold" | "ask";
+    recommendation?: "invest" | "pass";
     confidence?: "high" | "medium" | "low";
   } = {};
 
@@ -303,9 +303,9 @@ function parseMetadataFromMemo(markdown: string): {
   const metadataText = metadataMatch[0];
 
   // Extract recommendation
-  const recMatch = metadataText.match(/Recommendation:\s*(buy|sell|hold|ask)/i);
+  const recMatch = metadataText.match(/Recommendation:\s*(invest|pass)/i);
   if (recMatch) {
-    result.recommendation = recMatch[1].toLowerCase() as "buy" | "sell" | "hold" | "ask";
+    result.recommendation = recMatch[1].toLowerCase() as "invest" | "pass";
   }
 
   // Extract confidence

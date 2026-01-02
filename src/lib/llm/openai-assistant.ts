@@ -568,7 +568,7 @@ export interface AnalysisOutput {
 }
 
 export interface MemoOutput {
-  recommendation: "proceed" | "ask" | "pass";
+  recommendation: "invest" | "pass";
   confidence: "high" | "medium" | "low";
   archetype: {
     primary: string;
@@ -697,7 +697,7 @@ const MEMO_OUTPUT_FUNCTION = {
     properties: {
       recommendation: {
         type: "string",
-        enum: ["proceed", "ask", "pass"],
+        enum: ["invest", "pass"],
         description: "The investment recommendation",
       },
       confidence: {

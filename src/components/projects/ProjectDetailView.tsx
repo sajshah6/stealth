@@ -139,7 +139,7 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
           );
 
           if (projectStep) {
-            const output = projectStep.output as Record<string, unknown> | null;
+            const output = projectStep.output as Record<string, unknown> | undefined;
             return {
               id: projectStep.id,
               stepKey: projectStep.step_key,
@@ -472,6 +472,7 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
             stepTitle={selectedStep.title}
             stepKey={selectedStep.stepKey || selectedStep.id}
             output={selectedStep.output}
+            projectId={projectId}
           />
         )}
       </div>

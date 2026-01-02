@@ -21,7 +21,7 @@ import { withRetry } from "@/lib/utils/retry";
 
 export interface ICMemoOutput {
   /** Investment recommendation */
-  recommendation: "proceed" | "ask" | "pass";
+  recommendation: "invest" | "pass";
   
   /** Confidence level */
   confidence: "high" | "medium" | "low";
@@ -223,7 +223,7 @@ export const icMemoStep = defineStep<
         return {
           status: "completed",
           output: {
-            recommendation: metadata.recommendation || "ask",
+            recommendation: metadata.recommendation || "pass",
             confidence: metadata.confidence || "medium",
             archetype: effectiveArchetypeSelection.archetype,
             memoMarkdown: result.text,
@@ -372,7 +372,7 @@ Accepted sources: filings/rating reports 🔎, benchmarks 📊, LinkedIn/Glassdo
 - Bonds: fields per [PF3 §Page1.Fields] (CUSIP, YTW/call, OAS, duration/convexity, protections, Liquidity Tier, tax flags).
 - Funds/RE Deal Summary table per [PF2 §Page1.DealSummary] (includes Tax form / IRA / UBTI).
 
-**Recommendation (mandatory format)**: ⬆️ Proceed | ⚠️ Ask | ⛔ Pass — [Primary: Structure Play | Alpha Bet] — [≤2 Secondary per PF6] — Upside: … • Risk: …
+**Recommendation (mandatory format)**: ✓ Invest | ✗ Pass — [Primary: Structure Play | Alpha Bet] — [≤2 Secondary per PF6] — Upside: … • Risk: …
 
 **Chain-of-Thought (2–3 sentences)**: Approach → biggest assumption → decisive signal (and source/expert).
 
@@ -509,7 +509,7 @@ Team named • Two-source rule applied • Benchmarks tied-out • As-of stamped
    
    ---
    ## MEMO METADATA (for system parsing)
-   **Recommendation**: [proceed/ask/pass]
+   **Recommendation**: [invest/pass]
    **Confidence**: [high/medium/low]
    ...
 
@@ -526,7 +526,7 @@ Team named • Two-source rule applied • Benchmarks tied-out • As-of stamped
    ---
    ## MEMO METADATA (for system parsing)
    
-   **Recommendation**: [proceed/ask/pass]
+   **Recommendation**: [invest/pass]
    **Confidence**: [high/medium/low]
    **Primary Archetype**: ${archetype.archetype.primary}
    **Secondary Archetypes**: ${archetype.archetype.secondary.join(", ") || "None"}
@@ -555,7 +555,7 @@ Write every section. Be comprehensive. Use specific numbers from the documents.`
  * Looks for the "MEMO METADATA" section at the end.
  */
 function parseMetadataFromMemo(text: string): {
-  recommendation?: "proceed" | "ask" | "pass";
+  recommendation?: "invest" | "pass";
   confidence?: "high" | "medium" | "low";
   keyMetrics?: Record<string, string>;
   openQuestions?: Array<{ question: string; context: string; owner?: string }>;
@@ -565,9 +565,9 @@ function parseMetadataFromMemo(text: string): {
   
   try {
     // Extract recommendation
-    const recMatch = text.match(/\*\*Recommendation\*\*:\s*(proceed|ask|pass)/i);
+    const recMatch = text.match(/\*\*Recommendation\*\*:\s*(invest|pass)/i);
     if (recMatch) {
-      result.recommendation = recMatch[1].toLowerCase() as "proceed" | "ask" | "pass";
+      result.recommendation = recMatch[1].toLowerCase() as "invest" | "pass";
     }
     
     // Extract confidence

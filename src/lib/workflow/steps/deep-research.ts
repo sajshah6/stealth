@@ -10,7 +10,7 @@
 import { defineStep } from "../define-step";
 import { conductDeepResearch, type DeepResearchResult } from "@/lib/llm";
 import type { ExtractOpenQuestionsOutput } from "./extract-open-questions";
-import type { ICMemoOutput } from "./ic-memo";
+import type { InitialAnalysisOutput } from "./initial-analysis";
 
 // =============================================================================
 // OUTPUT TYPE
@@ -40,7 +40,7 @@ export interface DeepResearchOutput {
 export const deepResearchStep = defineStep<
   {
     extract_open_questions: ExtractOpenQuestionsOutput;
-    ic_memo: ICMemoOutput; // For company name
+    initial_analysis: InitialAnalysisOutput;
   },
   DeepResearchOutput
 >({
@@ -53,7 +53,7 @@ export const deepResearchStep = defineStep<
     model: "deep-research-pro-preview-12-2025",
   },
   
-  inputFrom: ["extract_open_questions", "ic_memo"],
+  inputFrom: ["extract_open_questions", "initial_analysis"],
   
   mayRequireUserInput: false,
   
@@ -61,7 +61,7 @@ export const deepResearchStep = defineStep<
     console.log("[DeepResearch] Starting deep research...");
     console.log("[DeepResearch] Project:", projectId);
     
-    const { extract_open_questions, ic_memo } = inputs;
+    const { extract_open_questions, initial_analysis } = inputs;
     
     if (!extract_open_questions?.openQuestions) {
       return {
@@ -71,7 +71,7 @@ export const deepResearchStep = defineStep<
     }
     
     const questions = extract_open_questions.openQuestions;
-    const companyName = ic_memo?.memoMarkdown?.match(/# Investment Committee Memo: (.+)/)?.[1] || "the company";
+    const companyName = initial_analysis?.companyName || "the company";
     
     console.log(`[DeepResearch] Researching ${questions.length} questions for ${companyName}`);
     console.log("[DeepResearch] ⏳ This will take 5-30+ minutes...");

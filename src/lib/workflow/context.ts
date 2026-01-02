@@ -179,29 +179,56 @@ export async function saveStepOutput(
   // Get step number from registry
   const stepNumber = getStepNumber(stepKey);
 
-  // UPSERT: Update if exists, insert if doesn't
-  const { error } = await supabase
+  // Check if record exists first
+  const { data: existing } = await supabase
     .from("project_steps")
-    .upsert({
-      project_id: projectId,
-      step_definition_id: stepDef.id,
-      step_key: stepKey,
-      step_number: stepNumber,
-      iteration: 1,
-      status: "completed",
-      output,
-      completed_at: new Date().toISOString(),
-      llm_model: metadata?.llmModel,
-      tokens_used: metadata?.tokensUsed,
-      duration_ms: metadata?.durationMs,
-    }, {
-      onConflict: "project_id,step_key",
-    });
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("step_key", stepKey)
+    .maybeSingle();
 
-  if (error) {
-    console.error(`[Context] Failed to save output for "${stepKey}":`, error);
+  if (existing) {
+    // Update existing record
+    const { error } = await supabase
+      .from("project_steps")
+      .update({
+        status: "completed",
+        output,
+        completed_at: new Date().toISOString(),
+        llm_model: metadata?.llmModel,
+        tokens_used: metadata?.tokensUsed,
+        duration_ms: metadata?.durationMs,
+      })
+      .eq("id", existing.id);
+
+    if (error) {
+      console.error(`[Context] Failed to save output for "${stepKey}":`, error);
+    } else {
+      console.log(`[Context] Output saved for "${stepKey}"`);
+    }
   } else {
-    console.log(`[Context] Output saved for "${stepKey}"`);
+    // Insert new record
+    const { error } = await supabase
+      .from("project_steps")
+      .insert({
+        project_id: projectId,
+        step_definition_id: stepDef.id,
+        step_key: stepKey,
+        step_number: stepNumber,
+        iteration: 1,
+        status: "completed",
+        output,
+        completed_at: new Date().toISOString(),
+        llm_model: metadata?.llmModel,
+        tokens_used: metadata?.tokensUsed,
+        duration_ms: metadata?.durationMs,
+      });
+
+    if (error) {
+      console.error(`[Context] Failed to insert output for "${stepKey}":`, error);
+    } else {
+      console.log(`[Context] Output saved for "${stepKey}"`);
+    }
   }
 }
 
@@ -250,23 +277,44 @@ export async function markStepNeedsInput(
   // Get step number from registry
   const stepNumber = getStepNumber(stepKey);
 
-  // UPSERT: Update if exists, insert if doesn't
-  const { error } = await supabase
+  // Check if record exists first
+  const { data: existing } = await supabase
     .from("project_steps")
-    .upsert({
-      project_id: projectId,
-      step_definition_id: stepDef.id,
-      step_key: stepKey,
-      step_number: stepNumber,
-      iteration: 1,
-      status: "needs_input",
-      input_request: inputRequest,
-    }, {
-      onConflict: "project_id,step_key",
-    });
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("step_key", stepKey)
+    .maybeSingle();
 
-  if (error) {
-    console.error(`[Context] Failed to mark step "${stepKey}" as needs_input:`, error);
+  if (existing) {
+    // Update existing record
+    const { error } = await supabase
+      .from("project_steps")
+      .update({
+        status: "needs_input",
+        input_request: inputRequest,
+      })
+      .eq("id", existing.id);
+
+    if (error) {
+      console.error(`[Context] Failed to update step "${stepKey}" to needs_input:`, error);
+    }
+  } else {
+    // Insert new record
+    const { error } = await supabase
+      .from("project_steps")
+      .insert({
+        project_id: projectId,
+        step_definition_id: stepDef.id,
+        step_key: stepKey,
+        step_number: stepNumber,
+        iteration: 1,
+        status: "needs_input",
+        input_request: inputRequest,
+      });
+
+    if (error) {
+      console.error(`[Context] Failed to insert step "${stepKey}" as needs_input:`, error);
+    }
   }
 
   // Also update project status
@@ -301,23 +349,44 @@ export async function markStepInProgress(
   // Get step number from registry
   const stepNumber = getStepNumber(stepKey);
 
-  // UPSERT: Update if exists, insert if doesn't
-  const { error } = await supabase
+  // Check if record exists first
+  const { data: existing } = await supabase
     .from("project_steps")
-    .upsert({
-      project_id: projectId,
-      step_definition_id: stepDef.id,
-      step_key: stepKey,
-      step_number: stepNumber,
-      iteration: 1,
-      status: "in_progress",
-      started_at: new Date().toISOString(),
-    }, {
-      onConflict: "project_id,step_key",
-    });
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("step_key", stepKey)
+    .maybeSingle();
 
-  if (error) {
-    console.error(`[Context] Failed to mark step "${stepKey}" as in_progress:`, error);
+  if (existing) {
+    // Update existing record
+    const { error } = await supabase
+      .from("project_steps")
+      .update({
+        status: "in_progress",
+        started_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id);
+
+    if (error) {
+      console.error(`[Context] Failed to update step "${stepKey}" to in_progress:`, error);
+    }
+  } else {
+    // Insert new record
+    const { error } = await supabase
+      .from("project_steps")
+      .insert({
+        project_id: projectId,
+        step_definition_id: stepDef.id,
+        step_key: stepKey,
+        step_number: stepNumber,
+        iteration: 1,
+        status: "in_progress",
+        started_at: new Date().toISOString(),
+      });
+
+    if (error) {
+      console.error(`[Context] Failed to insert step "${stepKey}" as in_progress:`, error);
+    }
   }
 }
 
@@ -347,24 +416,46 @@ export async function markStepSkipped(
   // Get step number from registry
   const stepNumber = getStepNumber(stepKey);
 
-  // UPSERT: Update if exists, insert if doesn't
-  const { error } = await supabase
+  // Check if record exists first
+  const { data: existing } = await supabase
     .from("project_steps")
-    .upsert({
-      project_id: projectId,
-      step_definition_id: stepDef.id,
-      step_key: stepKey,
-      step_number: stepNumber,
-      iteration: 1,
-      status: "skipped",
-      output: { skipped: true, reason },
-      completed_at: new Date().toISOString(),
-    }, {
-      onConflict: "project_id,step_key",
-    });
+    .select("id")
+    .eq("project_id", projectId)
+    .eq("step_key", stepKey)
+    .maybeSingle();
 
-  if (error) {
-    console.error(`[Context] Failed to mark step "${stepKey}" as skipped:`, error);
+  if (existing) {
+    // Update existing record
+    const { error } = await supabase
+      .from("project_steps")
+      .update({
+        status: "skipped",
+        output: { skipped: true, reason },
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", existing.id);
+
+    if (error) {
+      console.error(`[Context] Failed to update step "${stepKey}" to skipped:`, error);
+    }
+  } else {
+    // Insert new record
+    const { error } = await supabase
+      .from("project_steps")
+      .insert({
+        project_id: projectId,
+        step_definition_id: stepDef.id,
+        step_key: stepKey,
+        step_number: stepNumber,
+        iteration: 1,
+        status: "skipped",
+        output: { skipped: true, reason },
+        completed_at: new Date().toISOString(),
+      });
+
+    if (error) {
+      console.error(`[Context] Failed to insert step "${stepKey}" as skipped:`, error);
+    }
   }
 }
 

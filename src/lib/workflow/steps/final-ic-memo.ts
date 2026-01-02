@@ -10,9 +10,6 @@ import { callO1 } from "@/lib/llm/openai-chat";
 
 interface FinalICMemoOutput {
   finalMemoMarkdown: string;
-  recommendation: "invest" | "pass";
-  confidence: "high" | "medium" | "low";
-  sectionsIncluded: string[];
   changesSummary: string;
 }
 
@@ -144,29 +141,6 @@ Use the Deal Evaluator v2 — Instruction v5.3 format with ALL 13 SECTIONS:
 
 ---
 
-## OUTPUT FORMAT:
-
-Write the full IC memo as markdown text. At the very END, add this metadata section:
-
----
-## MEMO METADATA (for system parsing)
-
-**Recommendation**: [invest/pass]
-**Confidence**: [high/medium/low]
-**Primary Archetype**: [archetype name]
-**Secondary Archetypes**: [list]
-
-### Key Metrics
-| Metric | Value | Source |
-|--------|-------|--------|
-| [metric] | [value] | [source] |
-
-### Dashboard Items
-| Metric | Value | Trend | Priority |
-|--------|-------|-------|----------|
-| [metric] | [value] | [up/down/flat] | [yes/no] |
----
-
 **NOW BEGIN WRITING THE FULL, FINAL IC MEMO FOR ${companyName}.**
 
 Use the same format as the original. Incorporate all research findings. Be comprehensive. Write every section in full depth.`;
@@ -237,42 +211,13 @@ export const finalICMemoStep = defineStep({
     console.log("[FinalICMemo] Final memo generated");
     console.log("[FinalICMemo] Final memo length:", finalMemoText.length, "characters");
 
-    // Parse metadata from the memo
-    const metadata = parseMetadataFromMemo(finalMemoText);
-
-    // Audit: Check for required sections
-    const requiredSections = [
-      "Executive Summary",
-      "Strategy",
-      "Operator/Manager Assessment",
-      "Risk & Downside",
-      "Portfolio Fit",
-    ];
-
-    const sectionsIncluded: string[] = [];
-    for (const section of requiredSections) {
-      if (finalMemoText.toLowerCase().includes(section.toLowerCase())) {
-        sectionsIncluded.push(section);
-      } else {
-        console.warn(`[FinalICMemo] WARNING: Section "${section}" may be missing from final memo`);
-      }
-    }
-
-    console.log("[FinalICMemo] Sections audited:", sectionsIncluded.length, "/", requiredSections.length);
-
     // Generate changes summary
     const changesSummary = generateChangesSummary(integration.fullAnalysis);
 
     const output: FinalICMemoOutput = {
       finalMemoMarkdown: finalMemoText,
-      recommendation: metadata.recommendation || "pass",
-      confidence: metadata.confidence || "medium",
-      sectionsIncluded,
       changesSummary,
     };
-
-    console.log("[FinalICMemo] Recommendation:", output.recommendation);
-    console.log("[FinalICMemo] Confidence:", output.confidence);
 
     return {
       status: "completed" as const,
@@ -280,42 +225,6 @@ export const finalICMemoStep = defineStep({
     };
   },
 });
-
-/**
- * Parse metadata from the memo markdown
- */
-function parseMetadataFromMemo(markdown: string): {
-  recommendation?: "invest" | "pass";
-  confidence?: "high" | "medium" | "low";
-} {
-  const result: {
-    recommendation?: "invest" | "pass";
-    confidence?: "high" | "medium" | "low";
-  } = {};
-
-  // Look for metadata section
-  const metadataMatch = markdown.match(/MEMO METADATA[\s\S]*?---/i);
-  if (!metadataMatch) {
-    console.warn("[FinalICMemo] Could not find MEMO METADATA section");
-    return result;
-  }
-
-  const metadataText = metadataMatch[0];
-
-  // Extract recommendation
-  const recMatch = metadataText.match(/Recommendation:\s*(invest|pass)/i);
-  if (recMatch) {
-    result.recommendation = recMatch[1].toLowerCase() as "invest" | "pass";
-  }
-
-  // Extract confidence
-  const confMatch = metadataText.match(/Confidence:\s*(high|medium|low)/i);
-  if (confMatch) {
-    result.confidence = confMatch[1].toLowerCase() as "high" | "medium" | "low";
-  }
-
-  return result;
-}
 
 /**
  * Generate a summary of changes from the integration analysis

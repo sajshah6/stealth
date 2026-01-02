@@ -209,7 +209,11 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
     
     // Create a channel for this project's steps
     const channel = supabase
-      .channel(`project-${projectId}-steps`)
+      .channel(`project-${projectId}-steps`, {
+        config: {
+          broadcast: { self: true },
+        },
+      })
       .on(
         'postgres_changes',
         {
@@ -219,13 +223,28 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
           filter: `project_id=eq.${projectId}`,
         },
         (payload) => {
-          console.log('[ProjectDetailView] Step update received:', payload);
+          const newRecord = payload.new as any;
+          const oldRecord = payload.old as any;
+          console.log('[ProjectDetailView] 🔔 Step update received!', {
+            eventType: payload.eventType,
+            stepKey: newRecord?.step_key || oldRecord?.step_key,
+            status: newRecord?.status,
+            hasInputRequest: !!newRecord?.input_request,
+          });
+          
           // Refetch all data when any step changes
+          console.log('[ProjectDetailView] Refetching data...');
           fetchData();
         }
       )
       .subscribe((status) => {
-        console.log(`[ProjectDetailView] Subscription status: ${status}`);
+        if (status === 'SUBSCRIBED') {
+          console.log(`[ProjectDetailView] ✅ Successfully subscribed to real-time updates`);
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[ProjectDetailView] ❌ Subscription error');
+        } else {
+          console.log(`[ProjectDetailView] Subscription status: ${status}`);
+        }
       });
 
     // Cleanup subscription on unmount

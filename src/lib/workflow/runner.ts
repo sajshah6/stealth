@@ -204,18 +204,36 @@ export async function runStep(
 
 /**
  * Submit user input for a step that's waiting for it.
- * This saves the input and re-runs the step.
+ * This saves the input, marks the step as completed, and runs the next step.
  */
 export async function submitUserInput(
   projectId: string,
   stepKey: string,
   userInput: Record<string, unknown>
 ): Promise<RunStepResult> {
+  console.log(`[Runner] User submitted input for "${stepKey}"`);
+  
   // Save the user input
   await saveUserInput(projectId, stepKey, userInput);
-
-  // Re-run the step with the input
-  return runStep(projectId, stepKey, userInput);
+  
+  // Mark this step as completed
+  await saveStepOutput(projectId, stepKey, { userInput });
+  
+  // Get and run the next step
+  const nextKey = getNextStepKey(stepKey);
+  if (nextKey) {
+    console.log(`[Runner] Moving to next step: "${nextKey}"`);
+    return runStep(projectId, nextKey);
+  } else {
+    console.log(`[Runner] No more steps - workflow complete!`);
+    await markProjectCompleted(projectId);
+    return {
+      success: true,
+      status: "completed",
+      output: { userInput },
+      nextStepKey: null,
+    };
+  }
 }
 
 // =============================================================================

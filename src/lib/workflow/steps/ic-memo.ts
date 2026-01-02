@@ -20,12 +20,6 @@ import { withRetry } from "@/lib/utils/retry";
 // =============================================================================
 
 export interface ICMemoOutput {
-  /** Investment recommendation */
-  recommendation: "invest" | "pass";
-  
-  /** Confidence level */
-  confidence: "high" | "medium" | "low";
-  
   /** The archetype used for framing */
   archetype: {
     primary: string;
@@ -34,24 +28,6 @@ export interface ICMemoOutput {
   
   /** The full memo in markdown format */
   memoMarkdown: string;
-  
-  /** Key metrics extracted */
-  keyMetrics: Record<string, string>;
-  
-  /** Open questions for further research */
-  openQuestions: Array<{
-    question: string;
-    context: string;
-    owner?: string;
-  }>;
-  
-  /** Dashboard items for tracking */
-  dashboardItems: Array<{
-    metric: string;
-    value: string;
-    trend?: "up" | "down" | "flat";
-    priority?: boolean;
-  }>;
 }
 
 // =============================================================================
@@ -206,30 +182,11 @@ export const icMemoStep = defineStep<
           );
         }
         
-        // Parse metadata from the end of the memo
-        const metadata = parseMetadataFromMemo(result.text);
-        
-        // Validate metadata was parsed
-        if (!metadata.recommendation) {
-          console.warn("[ICMemo] WARNING: Failed to parse recommendation from memo");
-        }
-        if (!metadata.keyMetrics || Object.keys(metadata.keyMetrics).length === 0) {
-          console.warn("[ICMemo] WARNING: No key metrics found in memo metadata");
-        }
-        if (!metadata.dashboardItems || metadata.dashboardItems.length === 0) {
-          console.warn("[ICMemo] WARNING: No dashboard items found in memo metadata");
-        }
-        
         return {
           status: "completed",
           output: {
-            recommendation: metadata.recommendation || "pass",
-            confidence: metadata.confidence || "medium",
             archetype: effectiveArchetypeSelection.archetype,
             memoMarkdown: result.text,
-            keyMetrics: metadata.keyMetrics || {},
-            openQuestions: metadata.openQuestions || [],
-            dashboardItems: metadata.dashboardItems || [],
           },
           metadata: {
             llmModel: "gpt-4o",
@@ -506,12 +463,6 @@ Team named • Two-source rule applied • Benchmarks tied-out • As-of stamped
    
    ## 12) Minimal Ops Checklist
    [All checklist items]
-   
-   ---
-   ## MEMO METADATA (for system parsing)
-   **Recommendation**: [invest/pass]
-   **Confidence**: [high/medium/low]
-   ...
 
 3. **Depth Requirements:**
    - Minimum 3,000 words
@@ -521,103 +472,8 @@ Team named • Two-source rule applied • Benchmarks tied-out • As-of stamped
    - Specific numbers from documents (no "TBD")
    - Base/Bear/Bull scenarios with valuations
 
-4. **At the very END, add this metadata section:**
-
-   ---
-   ## MEMO METADATA (for system parsing)
-   
-   **Recommendation**: [invest/pass]
-   **Confidence**: [high/medium/low]
-   **Primary Archetype**: ${archetype.archetype.primary}
-   **Secondary Archetypes**: ${archetype.archetype.secondary.join(", ") || "None"}
-   
-   ### Key Metrics
-   | Metric | Value | Source |
-   |--------|-------|--------|
-   | Market Cap | $XB | [source] |
-   | Revenue | $XB | [source] |
-   | ... | ... | ... |
-   
-   ### Dashboard Items  
-   | Metric | Value | Trend | Priority |
-   |--------|-------|-------|----------|
-   | [metric] | [value] | [up/down/flat] | [yes/no] |
-   | ... | ... | ... | ... |
-   ---
-
 **NOW BEGIN WRITING THE FULL IC MEMO FOR ${analysis.companyName}.**
 
 Write every section. Be comprehensive. Use specific numbers from the documents.`;
-}
-
-/**
- * Parse metadata from the memo text.
- * Looks for the "MEMO METADATA" section at the end.
- */
-function parseMetadataFromMemo(text: string): {
-  recommendation?: "invest" | "pass";
-  confidence?: "high" | "medium" | "low";
-  keyMetrics?: Record<string, string>;
-  openQuestions?: Array<{ question: string; context: string; owner?: string }>;
-  dashboardItems?: Array<{ metric: string; value: string; trend?: "up" | "down" | "flat"; priority?: boolean }>;
-} {
-  const result: ReturnType<typeof parseMetadataFromMemo> = {};
-  
-  try {
-    // Extract recommendation
-    const recMatch = text.match(/\*\*Recommendation\*\*:\s*(invest|pass)/i);
-    if (recMatch) {
-      result.recommendation = recMatch[1].toLowerCase() as "invest" | "pass";
-    }
-    
-    // Extract confidence
-    const confMatch = text.match(/\*\*Confidence\*\*:\s*(high|medium|low)/i);
-    if (confMatch) {
-      result.confidence = confMatch[1].toLowerCase() as "high" | "medium" | "low";
-    }
-    
-    // Extract key metrics table
-    const metricsMatch = text.match(/### Key Metrics[\s\S]*?\|[\s\S]*?(?=###|\n---|\n\n\n|$)/);
-    if (metricsMatch) {
-      result.keyMetrics = {};
-      const rows = metricsMatch[0].split('\n').filter(line => 
-        line.includes('|') && !line.includes('---') && !line.includes('Metric')
-      );
-      for (const row of rows) {
-        const cells = row.split('|').map(c => c.trim()).filter(c => c);
-        if (cells.length >= 2) {
-          result.keyMetrics[cells[0]] = cells[1];
-        }
-      }
-    }
-    
-    // Extract dashboard items table
-    const dashMatch = text.match(/### Dashboard Items[\s\S]*?\|[\s\S]*?(?=###|\n---|\n\n\n|$)/);
-    if (dashMatch) {
-      result.dashboardItems = [];
-      const rows = dashMatch[0].split('\n').filter(line => 
-        line.includes('|') && !line.includes('---') && !line.includes('Metric')
-      );
-      for (const row of rows) {
-        const cells = row.split('|').map(c => c.trim()).filter(c => c);
-        if (cells.length >= 2) {
-          result.dashboardItems.push({
-            metric: cells[0],
-            value: cells[1],
-            trend: (cells[2]?.toLowerCase() as "up" | "down" | "flat") || "flat",
-            priority: cells[3]?.toLowerCase() === "yes",
-          });
-        }
-      }
-    }
-    
-    // Note: Open questions are embedded in the memo itself, 
-    // we don't need to parse them separately as they're in the markdown
-    
-  } catch (err) {
-    console.warn("[ICMemo] Failed to parse metadata from memo:", err);
-  }
-  
-  return result;
 }
 

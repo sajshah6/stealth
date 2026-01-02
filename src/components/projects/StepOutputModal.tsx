@@ -444,10 +444,6 @@ function ICMemoOutput({ output }: { output: Record<string, unknown> }) {
   const [activeTab, setActiveTab] = useState<"summary" | "full">("summary");
   
   const memoMarkdown = output.memoMarkdown as string | undefined;
-  const recommendation = output.recommendation as "invest" | "pass" | undefined;
-  const confidence = output.confidence as "high" | "medium" | "low" | undefined;
-  const keyMetrics = output.keyMetrics as Record<string, string> | undefined;
-  const openQuestions = output.openQuestions as Array<{ question: string; context: string; owner?: string }> | undefined;
   const archetype = output.archetype as { primary: string; secondary: string[] } | undefined;
   
   if (!memoMarkdown) {
@@ -457,38 +453,6 @@ function ICMemoOutput({ output }: { output: Record<string, unknown> }) {
       </div>
     );
   }
-  
-  // Recommendation styling
-  const recommendationConfig = {
-    invest: { 
-      label: "Invest ✓", 
-      icon: CheckCircle, 
-      bgColor: "bg-green-50", 
-      borderColor: "border-green-200",
-      textColor: "text-green-700",
-      iconColor: "text-green-600"
-    },
-    pass: { 
-      label: "Pass ✗", 
-      icon: XCircle, 
-      bgColor: "bg-red-50", 
-      borderColor: "border-red-200",
-      textColor: "text-red-700",
-      iconColor: "text-red-600"
-    },
-  };
-  
-  const recConfig = recommendation ? recommendationConfig[recommendation] : recommendationConfig.pass;
-  const RecIcon = recConfig.icon;
-  
-  // Confidence styling
-  const confidenceConfig = {
-    high: { color: "text-green-600", bg: "bg-green-50" },
-    medium: { color: "text-yellow-600", bg: "bg-yellow-50" },
-    low: { color: "text-red-600", bg: "bg-red-50" },
-  };
-  
-  const confConfig = confidence ? confidenceConfig[confidence] : confidenceConfig.medium;
   
   // Download handler
   const handleDownload = () => {
@@ -532,22 +496,18 @@ function ICMemoOutput({ output }: { output: Record<string, unknown> }) {
       {/* Tab Content */}
       {activeTab === "summary" ? (
         <div className="space-y-6">
-          {/* Recommendation Card */}
-          <div className={`p-6 ${recConfig.bgColor} border ${recConfig.borderColor} rounded-xl`}>
-            <div className="flex items-center gap-3 mb-2">
-              <RecIcon className={`w-6 h-6 ${recConfig.iconColor}`} />
-              <h3 className={`text-lg font-bold ${recConfig.textColor}`}>
-                Recommendation: {recConfig.label}
-              </h3>
+          {/* Memo Stats */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+              <p className="text-xs text-gray-600 mb-1">Document Type</p>
+              <p className="text-sm font-semibold text-gray-900">Initial IC Memo</p>
             </div>
-            {confidence && (
-              <div className="flex items-center gap-2 mt-3">
-                <span className="text-sm text-gray-600">Confidence:</span>
-                <span className={`text-sm font-semibold ${confConfig.color}`}>
-                  {confidence.toUpperCase()}
-                </span>
-              </div>
-            )}
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-xs text-gray-600 mb-1">Length</p>
+              <p className="text-sm font-semibold text-gray-900">
+                {memoMarkdown.length.toLocaleString()} characters
+              </p>
+            </div>
           </div>
           
           {/* Archetype */}
@@ -561,50 +521,6 @@ function ICMemoOutput({ output }: { output: Record<string, unknown> }) {
                 {archetype.secondary && archetype.secondary.length > 0 && (
                   <p className="text-sm text-blue-700 mt-1">
                     Also: {archetype.secondary.join(", ")}
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
-          
-          {/* Key Metrics */}
-          {keyMetrics && Object.keys(keyMetrics).length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                Key Metrics
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                {Object.entries(keyMetrics).map(([key, value]) => (
-                  <div
-                    key={key}
-                    className="p-3 bg-gray-50 rounded-lg border border-gray-200"
-                  >
-                    <p className="text-xs text-gray-600 mb-1">{key}</p>
-                    <p className="text-sm font-semibold text-gray-900">{value}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {/* Open Questions Preview */}
-          {openQuestions && openQuestions.length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                Open Questions ({openQuestions.length})
-              </h3>
-              <div className="p-4 bg-amber-50 rounded-lg border border-amber-100">
-                <ul className="space-y-2">
-                  {openQuestions.slice(0, 3).map((q, idx) => (
-                    <li key={idx} className="flex gap-2 text-sm text-gray-700">
-                      <span className="text-amber-600 font-semibold">{idx + 1}.</span>
-                      <span>{q.question}</span>
-                    </li>
-                  ))}
-                </ul>
-                {openQuestions.length > 3 && (
-                  <p className="text-xs text-gray-500 mt-2">
-                    +{openQuestions.length - 3} more questions
                   </p>
                 )}
               </div>
@@ -973,9 +889,6 @@ function FinalICMemoOutput({ output }: { output: Record<string, unknown> }) {
   const [activeTab, setActiveTab] = useState<"summary" | "full">("summary");
   
   const finalMemoMarkdown = output.finalMemoMarkdown as string | undefined;
-  const recommendation = output.recommendation as "invest" | "pass" | undefined;
-  const confidence = output.confidence as "high" | "medium" | "low" | undefined;
-  const sectionsIncluded = output.sectionsIncluded as string[] | undefined;
   const changesSummary = output.changesSummary as string | undefined;
   
   if (!finalMemoMarkdown) {
@@ -985,38 +898,6 @@ function FinalICMemoOutput({ output }: { output: Record<string, unknown> }) {
       </div>
     );
   }
-  
-  // Recommendation styling
-  const recommendationConfig = {
-    invest: { 
-      label: "Invest ✓", 
-      icon: CheckCircle, 
-      bgColor: "bg-green-50", 
-      borderColor: "border-green-200",
-      textColor: "text-green-700",
-      iconColor: "text-green-600"
-    },
-    pass: { 
-      label: "Pass ✗", 
-      icon: XCircle, 
-      bgColor: "bg-red-50", 
-      borderColor: "border-red-200",
-      textColor: "text-red-700",
-      iconColor: "text-red-600"
-    },
-  };
-  
-  const recConfig = recommendation ? recommendationConfig[recommendation] : recommendationConfig.pass;
-  const RecIcon = recConfig.icon;
-  
-  // Confidence styling
-  const confidenceConfig = {
-    high: { color: "text-green-600", bg: "bg-green-50" },
-    medium: { color: "text-yellow-600", bg: "bg-yellow-50" },
-    low: { color: "text-red-600", bg: "bg-red-50" },
-  };
-  
-  const confConfig = confidence ? confidenceConfig[confidence] : confidenceConfig.medium;
   
   // Download handler
   const handleDownload = () => {
@@ -1060,22 +941,18 @@ function FinalICMemoOutput({ output }: { output: Record<string, unknown> }) {
       {/* Tab Content */}
       {activeTab === "summary" ? (
         <div className="space-y-6">
-          {/* Recommendation Card */}
-          <div className={`p-6 ${recConfig.bgColor} border ${recConfig.borderColor} rounded-xl`}>
-            <div className="flex items-center gap-3 mb-2">
-              <RecIcon className={`w-6 h-6 ${recConfig.iconColor}`} />
-              <h3 className={`text-lg font-bold ${recConfig.textColor}`}>
-                Recommendation: {recConfig.label}
-              </h3>
+          {/* Memo Stats */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+              <p className="text-xs text-gray-600 mb-1">Document Type</p>
+              <p className="text-sm font-semibold text-gray-900">Final IC Memo</p>
             </div>
-            {confidence && (
-              <div className="flex items-center gap-2 mt-3">
-                <span className="text-sm text-gray-600">Confidence:</span>
-                <span className={`text-sm font-semibold ${confConfig.color}`}>
-                  {confidence.toUpperCase()}
-                </span>
-              </div>
-            )}
+            <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+              <p className="text-xs text-gray-600 mb-1">Length</p>
+              <p className="text-sm font-semibold text-gray-900">
+                {finalMemoMarkdown.length.toLocaleString()} characters
+              </p>
+            </div>
           </div>
           
           {/* Changes Summary */}
@@ -1088,25 +965,6 @@ function FinalICMemoOutput({ output }: { output: Record<string, unknown> }) {
                 <p className="text-sm text-gray-700 leading-relaxed">
                   {changesSummary}
                 </p>
-              </div>
-            </div>
-          )}
-          
-          {/* Sections Included */}
-          {sectionsIncluded && sectionsIncluded.length > 0 && (
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">
-                Memo Sections ({sectionsIncluded.length})
-              </h3>
-              <div className="grid grid-cols-2 gap-2">
-                {sectionsIncluded.map((section, idx) => (
-                  <div
-                    key={idx}
-                    className="px-3 py-2 bg-gray-50 rounded-lg text-sm text-gray-700"
-                  >
-                    {section}
-                  </div>
-                ))}
               </div>
             </div>
           )}

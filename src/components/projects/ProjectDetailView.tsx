@@ -201,6 +201,40 @@ export function ProjectDetailView({ projectId }: ProjectDetailViewProps) {
     fetchData();
   }, [fetchData]);
 
+  // Set up real-time subscription for step updates
+  useEffect(() => {
+    const supabase = createClient();
+    
+    console.log(`[ProjectDetailView] Setting up real-time subscription for project ${projectId}`);
+    
+    // Create a channel for this project's steps
+    const channel = supabase
+      .channel(`project-${projectId}-steps`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'project_steps',
+          filter: `project_id=eq.${projectId}`,
+        },
+        (payload) => {
+          console.log('[ProjectDetailView] Step update received:', payload);
+          // Refetch all data when any step changes
+          fetchData();
+        }
+      )
+      .subscribe((status) => {
+        console.log(`[ProjectDetailView] Subscription status: ${status}`);
+      });
+
+    // Cleanup subscription on unmount
+    return () => {
+      console.log(`[ProjectDetailView] Cleaning up subscription for project ${projectId}`);
+      supabase.removeChannel(channel);
+    };
+  }, [projectId, fetchData]);
+
   const handleDownload = async (file: FileFromDB) => {
     if (downloadingId) return;
     

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, LogIn, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FileUploader } from "./FileUploader";
@@ -237,6 +237,34 @@ export function NewProjectView() {
           </p>
         </div>
 
+        {/* Sign In Required Banner */}
+        {!user && (
+          <div className="mb-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-6 shadow-sm">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0">
+                <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center">
+                  <Lock className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">
+                  Sign in to create projects
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  You need to sign in with Google to create and manage research projects.
+                </p>
+                <Button
+                  onClick={signInWithGoogle}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Sign in with Google
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Project Name Input */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -248,7 +276,7 @@ export function NewProjectView() {
             className="h-12"
             value={projectName}
             onChange={(e) => setProjectName(e.target.value)}
-            disabled={isSubmitting}
+            disabled={isSubmitting || !user}
           />
         </div>
 
@@ -263,7 +291,7 @@ export function NewProjectView() {
             className="h-12"
             value={companyName}
             onChange={(e) => setCompanyName(e.target.value)}
-            disabled={isSubmitting}
+            disabled={isSubmitting || !user}
           />
         </div>
 
@@ -275,7 +303,7 @@ export function NewProjectView() {
           <FileUploader
             files={files}
             onFilesChange={setFiles}
-            disabled={isSubmitting}
+            disabled={isSubmitting || !user}
           />
         </div>
 
@@ -291,7 +319,7 @@ export function NewProjectView() {
           className="w-full h-12 text-base"
           size="lg"
           onClick={handleStartResearch}
-          disabled={!canSubmit && user !== null}
+          disabled={!user || !canSubmit}
         >
           {isSubmitting ? (
             <>
@@ -300,8 +328,8 @@ export function NewProjectView() {
             </>
           ) : !user ? (
             <>
-              Sign in to Start
-              <ArrowRight className="w-5 h-5 ml-2" />
+              <Lock className="w-5 h-5 mr-2" />
+              Sign in Required
             </>
           ) : (
             <>
@@ -310,6 +338,12 @@ export function NewProjectView() {
             </>
           )}
         </Button>
+        
+        {!user && (
+          <p className="text-xs text-gray-500 text-center mt-3">
+            Please sign in above to start creating projects
+          </p>
+        )}
 
         {/* Workflow Preview */}
         <div className="mt-8 p-4 bg-gray-50 rounded-xl">

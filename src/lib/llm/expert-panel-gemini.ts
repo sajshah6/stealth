@@ -10,6 +10,7 @@ import OpenAI from "openai";
 import { withRetry } from '@/lib/utils/retry';
 import {
   buildExpertPanelPrompt,
+  buildIterationReviewPrompt,
   calculateAverageScore,
   getCriticalExperts,
   validateExpertPanel,
@@ -97,14 +98,25 @@ const EXTRACT_EXPERTS_FUNCTION = {
 export async function getGeminiExpertPanel(
   whitePaper: string,
   companyName: string,
-  expertProfiles: ExpertProfile[]
-): Promise<ExpertPanelResult> {
+  expertProfiles: ExpertProfile[],
+  iteration: number = 1,
+  previousInteractionId?: string
+): Promise<{ review: ExpertPanelResult; interactionId: string }> {
   console.log("[Gemini-ExpertPanel] Starting review with Gemini Deep Research...");
+  console.log(`[Gemini-ExpertPanel] Iteration: ${iteration}`);
   console.log("[Gemini-ExpertPanel] White paper length:", whitePaper.length);
   console.log(`[Gemini-ExpertPanel] Using ${expertProfiles.length} pre-selected expert profiles`);
+  
+  if (iteration > 1 && previousInteractionId) {
+    console.log(`[Gemini-ExpertPanel] 🔗 Continuing from previous interaction: ${previousInteractionId}`);
+  }
 
   const gemini = getGeminiClient();
-  const prompt = buildExpertPanelPrompt(whitePaper, companyName, expertProfiles);
+  
+  // Build appropriate prompt based on iteration
+  const prompt = iteration === 1
+    ? buildExpertPanelPrompt(whitePaper, companyName, expertProfiles)
+    : buildIterationReviewPrompt(whitePaper, companyName, expertProfiles, iteration);
 
   const startTime = Date.now();
 
@@ -113,11 +125,18 @@ export async function getGeminiExpertPanel(
   
   const interaction = await withRetry(
     async () => {
-      return await gemini.interactions.create({
+      const createParams: any = {
         input: prompt,
         agent: 'deep-research-pro-preview-12-2025',
         background: true,
-      });
+      };
+      
+      // Add previousInteractionId if this is a continuation
+      if (previousInteractionId) {
+        createParams.previousInteractionId = previousInteractionId;
+      }
+      
+      return await gemini.interactions.create(createParams);
     },
     {
       maxRetries: 3,
@@ -275,13 +294,17 @@ Make sure you extract reviews for all 15 experts listed in the original prompt.`
   console.log(`[Gemini-ExpertPanel] - 15 experts assembled`);
   console.log(`[Gemini-ExpertPanel] - Average score: ${averageScore}`);
   console.log(`[Gemini-ExpertPanel] - Experts below 9: ${criticalExperts.length}`);
+  console.log(`[Gemini-ExpertPanel] - Interaction ID: ${interaction.id}`);
 
   return {
-    provider: "gemini",
-    model: "deep-research-pro-preview-12-2025",
-    experts,
-    averageScore,
-    criticalExperts,
+    review: {
+      provider: "gemini",
+      model: "deep-research-pro-preview-12-2025",
+      experts,
+      averageScore,
+      criticalExperts,
+    },
+    interactionId: interaction.id,
   };
 }
 

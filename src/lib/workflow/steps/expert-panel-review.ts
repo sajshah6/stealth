@@ -81,6 +81,11 @@ export const expertPanelReviewStep = defineStep({
     let iteration = 1;
     let allPassed = false;
     let currentDraftVersion = 1;  // Start with draft 1 from previous step
+    
+    // Conversation state for each LLM
+    let claudeConversationHistory: any[] = [];
+    let gptConversationHistory: any[] = [];
+    let geminiPreviousInteractionId: string | undefined = undefined;
 
     while (!allPassed && iteration <= MAX_ITERATIONS) {
       console.log(`\n[ExpertPanelReview] ========== Iteration ${iteration}/${MAX_ITERATIONS} ==========`);
@@ -97,12 +102,33 @@ export const expertPanelReviewStep = defineStep({
       console.log("[ExpertPanelReview] - Claude Opus 4: role-playing as all 15 experts");
       console.log("[ExpertPanelReview] - GPT-4o: role-playing as all 15 experts");
       console.log("[ExpertPanelReview] - Gemini Deep Research: role-playing as all 15 experts (10-30 min)");
+      
+      if (iteration > 1) {
+        console.log(`[ExpertPanelReview] 🔗 Continuing conversations from iteration ${iteration - 1}`);
+        console.log("[ExpertPanelReview] - Claude: Using message history");
+        console.log("[ExpertPanelReview] - GPT: Using conversation history");
+        console.log("[ExpertPanelReview] - Gemini: Using previous_interaction_id");
+      }
 
-      const [claudeReview, gptReview, geminiReview] = await Promise.all([
-        getClaudeExpertPanel(currentDraft, companyName, expertProfiles),
-        getGPTExpertPanel(currentDraft, companyName, expertProfiles),
-        getGeminiExpertPanel(currentDraft, companyName, expertProfiles),
+      const [claudeResult, gptResult, geminiResult]: [
+        { review: ExpertPanelResult; conversationHistory: any[] },
+        { review: ExpertPanelResult; conversationHistory: any[] },
+        { review: ExpertPanelResult; interactionId: string }
+      ] = await Promise.all([
+        getClaudeExpertPanel(currentDraft, companyName, expertProfiles, iteration, claudeConversationHistory),
+        getGPTExpertPanel(currentDraft, companyName, expertProfiles, iteration, gptConversationHistory),
+        getGeminiExpertPanel(currentDraft, companyName, expertProfiles, iteration, geminiPreviousInteractionId),
       ]);
+      
+      // Extract reviews and update conversation state
+      const claudeReview = claudeResult.review;
+      const gptReview = gptResult.review;
+      const geminiReview = geminiResult.review;
+      
+      // Update conversation state for next iteration
+      claudeConversationHistory = claudeResult.conversationHistory;
+      gptConversationHistory = gptResult.conversationHistory;
+      geminiPreviousInteractionId = geminiResult.interactionId;
 
       console.log("[ExpertPanelReview] All 3 panels complete!");
       console.log(`[ExpertPanelReview] - Claude average: ${claudeReview.averageScore}`);

@@ -120,9 +120,9 @@ export function WorkflowStep({ step, stepNumber, isLast, onViewOutput }: Workflo
             )}
           </div>
           <div className="flex items-center gap-2">
-            {step.timestamp && (
-              <span className="text-xs text-gray-400">{step.timestamp}</span>
-            )}
+          {step.timestamp && (
+            <span className="text-xs text-gray-400">{step.timestamp}</span>
+          )}
             {hasOutput && onViewOutput && (
               <button
                 onClick={() => onViewOutput(step)}

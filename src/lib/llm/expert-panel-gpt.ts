@@ -8,6 +8,7 @@ import OpenAI from "openai";
 import { withRetry } from "@/lib/utils/retry";
 import {
   buildExpertPanelPrompt,
+  buildIterationReviewPrompt,
   calculateAverageScore,
   getCriticalExperts,
   validateExpertPanel,
@@ -81,25 +82,39 @@ export async function getGPTExpertPanel(
   whitePaper: string,
   companyName: string,
   expertProfiles: ExpertProfile[],
+  iteration: number = 1,
+  conversationHistory: any[] = [],
   model: "gpt-4o" | "o1" = "gpt-4o"
-): Promise<ExpertPanelResult> {
+): Promise<{ review: ExpertPanelResult; conversationHistory: any[] }> {
   console.log(`[GPT-ExpertPanel] Starting review with ${model}...`);
+  console.log(`[GPT-ExpertPanel] Iteration: ${iteration}`);
   console.log("[GPT-ExpertPanel] White paper length:", whitePaper.length);
   console.log(`[GPT-ExpertPanel] Using ${expertProfiles.length} pre-selected expert profiles`);
+  
+  if (iteration > 1) {
+    console.log(`[GPT-ExpertPanel] 🔗 Continuing conversation from iteration ${iteration - 1} (${conversationHistory.length} messages)`);
+  }
 
-  const prompt = buildExpertPanelPrompt(whitePaper, companyName, expertProfiles);
+  // Build appropriate prompt based on iteration
+  const prompt = iteration === 1
+    ? buildExpertPanelPrompt(whitePaper, companyName, expertProfiles)
+    : buildIterationReviewPrompt(whitePaper, companyName, expertProfiles, iteration);
+
+  // Build messages array with conversation history
+  const messages = [
+    ...conversationHistory,
+    {
+      role: "user" as const,
+      content: prompt,
+    },
+  ];
 
   // Use retry for rate limits
   const { result: completion, attempts } = await withRetry(
     async () => {
       return await openai.chat.completions.create({
         model,
-        messages: [
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
+        messages,
         tools: [
           {
             type: "function",
@@ -142,12 +157,29 @@ export async function getGPTExpertPanel(
   console.log(`[GPT-ExpertPanel] - Average score: ${averageScore}`);
   console.log(`[GPT-ExpertPanel] - Experts below 9: ${criticalExperts.length}`);
 
+  // Update conversation history for next iteration
+  const updatedConversationHistory = [
+    ...conversationHistory,
+    {
+      role: "user" as const,
+      content: prompt,
+    },
+    {
+      role: "assistant" as const,
+      content: completion.choices[0]?.message?.content || null,
+      tool_calls: completion.choices[0]?.message?.tool_calls,
+    },
+  ];
+
   return {
-    provider: "gpt",
-    model,
-    experts,
-    averageScore,
-    criticalExperts,
+    review: {
+      provider: "gpt",
+      model,
+      experts,
+      averageScore,
+      criticalExperts,
+    },
+    conversationHistory: updatedConversationHistory,
   };
 }
 

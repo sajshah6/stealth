@@ -8,6 +8,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { withRetry } from "@/lib/utils/retry";
 import {
   buildExpertPanelPrompt,
+  buildIterationReviewPrompt,
   calculateAverageScore,
   getCriticalExperts,
   validateExpertPanel,
@@ -90,14 +91,34 @@ export async function getClaudeExpertPanel(
   whitePaper: string,
   companyName: string,
   expertProfiles: ExpertProfile[],
+  iteration: number = 1,
+  conversationHistory: any[] = [],
   model: string = "claude-opus-4-20250514"
-): Promise<ExpertPanelResult> {
+): Promise<{ review: ExpertPanelResult; conversationHistory: any[] }> {
   console.log(`[Claude-ExpertPanel] Starting review with ${model}...`);
+  console.log(`[Claude-ExpertPanel] Iteration: ${iteration}`);
   console.log("[Claude-ExpertPanel] White paper length:", whitePaper.length);
   console.log(`[Claude-ExpertPanel] Using ${expertProfiles.length} pre-selected expert profiles`);
+  
+  if (iteration > 1) {
+    console.log(`[Claude-ExpertPanel] 🔗 Continuing conversation from iteration ${iteration - 1} (${conversationHistory.length} messages)`);
+  }
 
   const anthropic = getAnthropicClient();
-  const prompt = buildExpertPanelPrompt(whitePaper, companyName, expertProfiles);
+  
+  // Build appropriate prompt based on iteration
+  const prompt = iteration === 1
+    ? buildExpertPanelPrompt(whitePaper, companyName, expertProfiles)
+    : buildIterationReviewPrompt(whitePaper, companyName, expertProfiles, iteration);
+
+  // Build messages array with conversation history
+  const messages = [
+    ...conversationHistory,
+    {
+      role: "user" as const,
+      content: prompt,
+    },
+  ];
 
   // Use streaming for long requests (required by Claude for >10 min operations)
   console.log("[Claude-ExpertPanel] Using streaming mode for long request...");
@@ -107,12 +128,7 @@ export async function getClaudeExpertPanel(
       return await anthropic.messages.stream({
         model,
         max_tokens: 16000,
-        messages: [
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
+        messages,
         tools: [EXPERT_PANEL_TOOL],
         tool_choice: {
           type: "tool",
@@ -156,12 +172,30 @@ export async function getClaudeExpertPanel(
   console.log(`[Claude-ExpertPanel] - Average score: ${averageScore}`);
   console.log(`[Claude-ExpertPanel] - Experts below 9: ${criticalExperts.length}`);
 
+  // Update conversation history for next iteration
+  const updatedConversationHistory = [
+    ...conversationHistory,
+    {
+      role: "user" as const,
+      content: iteration === 1
+        ? buildExpertPanelPrompt(whitePaper, companyName, expertProfiles)
+        : buildIterationReviewPrompt(whitePaper, companyName, expertProfiles, iteration),
+    },
+    {
+      role: "assistant" as const,
+      content: message.content,
+    },
+  ];
+
   return {
-    provider: "claude",
-    model,
-    experts,
-    averageScore,
-    criticalExperts,
+    review: {
+      provider: "claude",
+      model,
+      experts,
+      averageScore,
+      criticalExperts,
+    },
+    conversationHistory: updatedConversationHistory,
   };
 }
 
